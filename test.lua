@@ -14,11 +14,9 @@ function Test.Run(self, shutdown)
     local unitwind = require("unitwind").new {
         enabled = true,
         beforeAll = function()
-            -- TODO logger set warn for spamming
             dps:Initialize()
         end,
         -- afterAll = function ()
-        -- TODO logger set default
         -- end,
     }
 
@@ -45,8 +43,7 @@ function Test.Run(self, shutdown)
         return { 1, 1, 1 }
     end)
 
-    -- TODO 
-    -- tes3.getMagicEffectName
+    -- TODO tes3.getMagicEffectName
 
     unitwind:start("DPSTooltips Unittest")
 

@@ -19,7 +19,7 @@ local function CreateScratchData()
             positives = {
                 [shared.key.magicka] = 0,
                 [shared.key.attack] = 0, -- means accuracy
-                [shared.key.dispel] = 0,
+                [shared.key.dispel] = 0, -- both, but unresist
             },
             negatives = {
                 [shared.key.magicka] = 0,
@@ -84,14 +84,14 @@ end
 -- TODO modifieable for mod
 -- {target, attacker}
 local attributeFilter = {
-    [tes3.attribute.strength] = { false, true },   -- damage
+    [tes3.attribute.strength] = { false, true }, -- damage
     [tes3.attribute.intelligence] = { false, false },
-    [tes3.attribute.willpower] = { true, false },  -- regist
-    [tes3.attribute.agility] = { true, true },     -- evade, hit
-    [tes3.attribute.speed] = { false, false },     -- TODO weapon swing mod
-    [tes3.attribute.endurance] = { false, false }, -- TODO realtime health calculate mod
+    [tes3.attribute.willpower] = { true, true }, -- fatigue
+    [tes3.attribute.agility] = { true, true }, -- evade, hit, fatigue
+    [tes3.attribute.speed] = { false, false }, -- TODO weapon swing mod
+    [tes3.attribute.endurance] = { true, true }, -- TODO realtime health calculate mod, fatigue
     [tes3.attribute.personality] = { false, false },
-    [tes3.attribute.luck] = { true, true },        -- evade, hit
+    [tes3.attribute.luck] = { true, true }, -- evade, hit
 }
 
 -- TODO should be combine current equipments
@@ -152,6 +152,10 @@ local function IsAffectedSkill(params)
     else
         return false
     end
+end
+
+local function InverseNormalizeMagnitude(m)
+    return math.max(100.0 - m, 0) / 100.0
 end
 
 local function CalculateDPS(damage, speed)
@@ -244,7 +248,7 @@ local function MultModifier(params)
         if params.data.target.positives[params.key] then
             -- percent
             params.data.target.positives[params.key] = params.data.target.positives[params.key] *
-                (1.0 - (params.value * 0.01))
+                InverseNormalizeMagnitude(params.value)
             return true
         end
     end
@@ -449,7 +453,7 @@ end
 
 
 -- only vanilla
--- todo add config mod efect
+-- TODO add config mod efect
 local resolver = {
     -- waterBreathing 0
     -- swiftSwim 1
@@ -637,7 +641,6 @@ function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnS
 
     local icons = {}
 
-    -- todo If there is a mod that allows NPC endurance to change HP in real-time, then endurance modifier needs to be tracked as well.
     if enchantment then
         -- todo not yet on cast
         -- todo on strike effect consider charge cost
@@ -667,7 +670,7 @@ function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnS
                             if not icons[resolver.key] then
                                 icons[resolver.key] = {}
                             end
-                            table.insert(icons[resolver.key], effect.object.icon) -- todo skip contained if you want
+                            table.insert(icons[resolver.key], effect.object.icon)
                         end
                     end
                 end
@@ -751,20 +754,19 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strengthModifi
         damageMultStr = self:GetStrengthModifier(strengthModifier)
         damageMultCond = GetConditionModifier(weapon, itemData)
     end
-    local minSpeed = speed -- TODO must be quickly, how?
+    local minSpeed = speed -- TODO should be quickly, how?
+    local maxSpeed = speed
     for i, v in pairs(baseDamage) do
         if accurateDamage then
             v.min = CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1, 1);
             v.max = CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1, 1);
         end
         v.min = CalculateDPS(v.min, minSpeed)
-        v.max = CalculateDPS(v.max, speed)
+        v.max = CalculateDPS(v.max, maxSpeed)
     end
     return baseDamage
 end
 
--- FIXME resist magicka affects weakness elemental effects, but it does not affect positive effects.
--- therefore, split positive and negative modifiers
 
 local function ResolveWeaponDPS(weaponDamages, effect)
     -- highest damages flags
@@ -792,78 +794,76 @@ local function ResolveWeaponDPS(weaponDamages, effect)
     return range, highestType
 end
 
--- todo testable
+-- TODO test
 local function ResolveEffectDPS(effect, icons)
-    -- effect
-    -- damages - modifiers pairs
-    -- tes3.effectAttribute
-    local pair = {
-        [shared.key.fire] = shared.key.fire,
-        [shared.key.frost] = shared.key.frost,
-        [shared.key.shock] = shared.key.shock,
-        [shared.key.poison] = shared.key.poison,
-        [shared.key.absorbHealth] = shared.key.magicka,
-        [shared.key.damageHealth] = shared.key.magicka, -- ?
-    }
     local effectDamages = {}
     local effectTotal = 0
-    for k, v in pairs(pair) do
-        -- correct?
-        -- needs clamping? timing is here or per effect add/sub?
-        effectDamages[k] = effect.target.damages[k]
-        -- * (math.max(100.0 - effect.target.negatives[v] + effect.target.positives[v], 0.0) / 100.0)
-        effectTotal = effectTotal + effectDamages[k]
-
-        -- merge icons if different between k and v
-        if k ~= v and icons[v] then
-            if not icons[k] then
-                icons[k] = {}
-            end
-            for _, path in ipairs(icons[v]) do
-                table.insert(icons[k], path)
-            end
-        end
+    for k, v in pairs(effect.target.damages) do
+        effectDamages[k] = v
+        effectTotal = effectTotal + v
     end
+    -- TODO add positive icons
+    effectTotal = effectTotal - effect.target.restoreHealth
+    effectTotal = effectTotal - effect.target.fortifyHealth -- temporary
     return effectTotal, effectDamages
 end
 
--- FIXME resist magicka affects weakness elemental effects, but it does not affect positive effects.
--- therefore, split positive and negative modifiers
-
-local function ResolveModifiers(effect, resistMagicka)
+-- TODO test
+local function ResolveModifiers(effect, icons, resistMagicka)
     effect.target.resists = {}
     effect.attacker.resists = {}
     -- resist/weakness magicka
     local magicka = shared.key.magicka
     -- Once Resist Magicka reaches 100%, it's the only type of resistance that can't be broken by a Weakness effect, since Weakness is itself a magicka type spell.
     -- so if both apply, above works?
-    local t = math.max(100.0 - effect.target.positives[magicka], 0) / 100.0
-    t = (math.max(100.0 + effect.target.negatives[magicka], 0) / 100.0) * t
-    local a = math.max(100.0 - - resistMagicka - effect.attacker.positives[magicka], 0) / 100.0
-    a = (math.max(100.0 - effect.attacker.negatives[magicka], 0) / 100.0) * a
-    effect.target.resists[magicka] = t
-    effect.attacker.resists[magicka] = a
+    local targetResistMagicka = InverseNormalizeMagnitude(effect.target.positives[magicka])
+    targetResistMagicka = InverseNormalizeMagnitude(effect.target.negatives[magicka]) * targetResistMagicka
+    local attackerResistMagicka = InverseNormalizeMagnitude(effect.attacker.positives[magicka] + resistMagicka )
+    attackerResistMagicka = InverseNormalizeMagnitude(effect.attacker.negatives[magicka]) * attackerResistMagicka
+    effect.target.resists[magicka] = targetResistMagicka
+    effect.attacker.resists[magicka] = attackerResistMagicka
     -- apply resist magicka to negative effects
     for k, v in pairs(effect.target.negatives) do
         if k ~= shared.key.magicka then
-            effect.target.negatives[k] = v * t
+            effect.target.negatives[k] = v * targetResistMagicka
         end
     end
     for k, v in pairs(effect.attacker.negatives) do
         if k ~= shared.key.magicka then
-            effect.attacker.negatives[k] = v * a
+            effect.attacker.negatives[k] = v * attackerResistMagicka
         end
     end
-    -- resist/weakness elemental
-    effect.target.resists[shared.key.fire] = math.max(100.0 - effect.target.positives[shared.key.fire] + effect.target.negatives[shared.key.fire], 0) / 100.0
-    effect.target.resists[shared.key.frost] = math.max(100.0 - effect.target.positives[shared.key.frost] + effect.target.negatives[shared.key.frost], 0) / 100.0
-    effect.target.resists[shared.key.shock] = math.max(100.0 - effect.target.positives[shared.key.shock] + effect.target.negatives[shared.key.shock], 0) / 100.0
-    effect.target.resists[shared.key.poison] = math.max(100.0 - effect.target.positives[shared.key.poison] + effect.target.negatives[shared.key.poison], 0) / 100.0
-    effect.target.resists[shared.key.normalWeapons] = math.max(100.0 - effect.target.positives[shared.key.normalWeapons] + effect.target.negatives[shared.key.normalWeapons], 0) / 100.0
 
-    -- apply other modifiers
+    -- analytic
+    -- TODO apply, so resit/weakness magicka applied?
+    local reflectChance = effect.target.positives[shared.key.spellAbsorption] * effect.target.positives[shared.key.reflect]
+    local dispelChance = InverseNormalizeMagnitude(effect.target.positives[shared.key.dispel])
+    
+    -- resist/weakness elemental
+    for k, v in pairs(effect.target.negatives) do
+        effect.target.resists[k] = InverseNormalizeMagnitude(effect.target.positives[k] + v)
+    end
+
+    -- attrib, skill
+    local function ApplyResistMagicka(actor, mod)
+        for k, v in pairs(actor.damageAttributes) do
+            actor.damageAttributes[k] = v * mod
+        end
+        for k, v in pairs(actor.drainAttributes) do
+            actor.damageAttributes[k] = v * mod
+        end
+        for k, v in pairs(actor.damageSkills) do
+            actor.damageAttributes[k] = v * mod
+        end
+        for k, v in pairs(actor.drainSkills) do
+            actor.damageAttributes[k] = v * mod
+        end
+    end
+    ApplyResistMagicka(effect.target, targetResistMagicka)
+    ApplyResistMagicka(effect.attacker, attackerResistMagicka)
+
+    -- damage
     local e = effect.target
-    -- resist damage
     local pair = {
         [shared.key.fire] = shared.key.fire,
         [shared.key.frost] = shared.key.frost,
@@ -871,39 +871,26 @@ local function ResolveModifiers(effect, resistMagicka)
         [shared.key.poison] = shared.key.poison,
         [shared.key.absorbHealth] = shared.key.magicka,
         [shared.key.damageHealth] = shared.key.magicka,
+        [shared.key.drainHealth] = shared.key.magicka, -- temporary
+        [shared.key.sunDamage] = nil, -- only vampire
     }
+
+    
     for k, v in pairs(pair) do
-        e.damages[k] = e.damages[k] * e.resists[v]
+        if v then
+            e.damages[k] = e.damages[k] * e.resists[v]
+            
+            -- merge icons if different between k and v
+            if k ~= v and icons[v] then
+                if not icons[k] then
+                    icons[k] = {}
+                end
+                for _, path in ipairs(icons[v]) do
+                    table.insert(icons[k], path)
+                end
+            end
+        end
     end
-
-    -- attrib, skill
-    for k, v in pairs(e.damageAttributes) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.drainAttributes) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.damageSkills) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.drainSkills) do
-        e.damageAttributes[k] = v * t
-    end
-    -- TODO function
-    e = effect.attacker
-    for k, v in pairs(e.damageAttributes) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.drainAttributes) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.damageSkills) do
-        e.damageAttributes[k] = v * t
-    end
-    for k, v in pairs(e.drainSkills) do
-        e.damageAttributes[k] = v * t
-    end
-
 end
 
 local function GetAttributeModifier(e, a)
@@ -953,11 +940,13 @@ function DPS.CalculateDPS(self, weapon, itemData)
     end
     local effect, icons = self:CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
     local resistMagicka = tes3.mobilePlayer.resistMagicka
-    ResolveModifiers(effect, resistMagicka)
+    ResolveModifiers(effect, icons, resistMagicka)
     local str = GetAttributeModifier(effect.attacker, tes3.attribute.strength)
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, str, marksman, config.accurateDamage)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
+    -- TODO apply reflect, abosorb modifier
+
     return {
         weaponDamageRange = weaponDamageRange,
         weaponDamages = weaponDamages,

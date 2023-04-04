@@ -47,35 +47,31 @@ function Drawer.Initialize(self)
         [shared.key.poison] = { gmst = tes3.gmst.sEffectPoison, name = nil, },
         [shared.key.absorbHealth] = { gmst = tes3.gmst.sEffectAbsorbHealth, name = nil, },
         [shared.key.damageHealth] = { gmst = tes3.gmst.sEffectDamageHealth, name = nil, },
+        [shared.key.drainHealth] = { gmst = tes3.gmst.sEffectDrainHealth, name = nil, },
+        [shared.key.sunDamage] = { gmst = tes3.gmst.sEffectSunDamage, name = nil, },
     }
 
     self.colors = {
         [shared.key.fire] = { palette = tes3.palette.healthColor, color = {
-            0.78431379795074,
-            0.23529413342476,
-            0.11764706671238,
+            0.78431379795074, 0.23529413342476, 0.11764706671238,
         }
         },
         [shared.key.frost] = { palette = tes3.palette.miscColor, color = {
-            0,
-            0.80392163991928,
-            0.80392163991928,
+            0, 0.80392163991928, 0.80392163991928,
         }
         },
         [shared.key.shock] = { palette = tes3.palette.linkColor, color = {
-            0.43921571969986,
-            0.49411767721176,
-            0.8117647767067,
+            0.43921571969986, 0.49411767721176, 0.8117647767067,
         }
         },
         [shared.key.poison] = { palette = tes3.palette.fatigueColor, color = {
-            0,
-            0.58823531866074,
-            0.23529413342476,
+            0, 0.58823531866074, 0.23529413342476,
         }
         },
         [shared.key.absorbHealth] = { palette = nil, color = nil },
         [shared.key.damageHealth] = { palette = nil, color = nil },
+        [shared.key.drainHealth] = { palette = nil, color = nil },
+        [shared.key.sunDamage] = { palette = nil, color = nil },
     }
 
     for k, v in pairs(self.names) do
@@ -125,7 +121,7 @@ end
 
 function Drawer.DisplayDPS(self, element, data)
     local text = nil
-    -- TODO need localize?
+    -- need localize?
     if config.minmaxRange then
         text = string.format("DPS: %.1f - %.1f", data.weaponDamageRange.min + data.effectTotal,
             data.weaponDamageRange.max + data.effectTotal)
@@ -142,7 +138,17 @@ function Drawer.DisplayWeaponDPS(self, element, data)
         local block = CreateBlock(element, self.idWeaponBlock)
         block.borderAllSides = 1
 
-        -- TODO add icon shiled, attack, skill, attibute...
+        -- icons if exists
+        if data.icons[k] then
+            for _, path in ipairs(data.icons[k]) do
+                local icon = block:createImage({
+                    id = self.idWeaponIcon,
+                    path = string.format("icons\\%s", path)
+                })
+                icon.borderTop = 1
+                icon.borderRight = 6
+            end
+        end
 
         -- label
         local text = nil
