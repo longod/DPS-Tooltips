@@ -5,7 +5,6 @@ function Drawer.new()
     return drawer
 end
 
-local shared = require("longod.DPSTooltips.shared")
 local logger = require("longod.DPSTooltips.logger")
 local config = require("longod.DPSTooltips.config").Load()
 
@@ -36,56 +35,63 @@ local function DisplayStub(data)
 end
 
 function Drawer.Initialize(self)
-    self.names = {
-        [shared.key.attack] = { gmst = tes3.gmst.sAttack, name = nil },
-        [shared.key.slash] = { gmst = tes3.gmst.sSlash, name = nil },
-        [shared.key.thrust] = { gmst = tes3.gmst.sThrust, name = nil },
-        [shared.key.chop] = { gmst = tes3.gmst.sChop, name = nil },
-        [shared.key.fire] = { gmst = tes3.gmst.sEffectFireDamage, name = nil },
-        [shared.key.frost] = { gmst = tes3.gmst.sEffectFrostDamage, name = nil },
-        [shared.key.shock] = { gmst = tes3.gmst.sEffectShockDamage, name = nil },
-        [shared.key.poison] = { gmst = tes3.gmst.sEffectPoison, name = nil, },
-        [shared.key.absorbHealth] = { gmst = tes3.gmst.sEffectAbsorbHealth, name = nil, },
-        [shared.key.damageHealth] = { gmst = tes3.gmst.sEffectDamageHealth, name = nil, },
-        [shared.key.drainHealth] = { gmst = tes3.gmst.sEffectDrainHealth, name = nil, },
-        [shared.key.sunDamage] = { gmst = tes3.gmst.sEffectSunDamage, name = nil, },
+    self.weaponNames = {
+        [tes3.physicalAttackType.slash] = { gmst = tes3.gmst.sSlash, name = nil },
+        [tes3.physicalAttackType.thrust] = { gmst = tes3.gmst.sThrust, name = nil },
+        [tes3.physicalAttackType.chop] = { gmst = tes3.gmst.sChop, name = nil },
+        [tes3.physicalAttackType.projectile] = { gmst = tes3.gmst.sAttack, name = nil },
     }
-
+    self.effectNames = {
+        [tes3.effect.fireDamage] = { gmst = tes3.gmst.sEffectFireDamage, name = nil },
+        [tes3.effect.frostDamage] = { gmst = tes3.gmst.sEffectFrostDamage, name = nil },
+        [tes3.effect.shockDamage] = { gmst = tes3.gmst.sEffectShockDamage, name = nil },
+        [tes3.effect.poison] = { gmst = tes3.gmst.sEffectPoison, name = nil, },
+        [tes3.effect.absorbHealth] = { gmst = tes3.gmst.sEffectAbsorbHealth, name = nil, },
+        [tes3.effect.damageHealth] = { gmst = tes3.gmst.sEffectDamageHealth, name = nil, },
+        [tes3.effect.drainHealth] = { gmst = tes3.gmst.sEffectDrainHealth, name = nil, },
+        [tes3.effect.sunDamage] = { gmst = tes3.gmst.sEffectSunDamage, name = nil, },
+    }
     self.colors = {
-        [shared.key.fire] = { palette = tes3.palette.healthColor, color = {
+        [tes3.effect.fireDamage] = { palette = tes3.palette.healthColor, color = {
             0.78431379795074, 0.23529413342476, 0.11764706671238,
         }
         },
-        [shared.key.frost] = { palette = tes3.palette.miscColor, color = {
+        [tes3.effect.frostDamage] = { palette = tes3.palette.miscColor, color = {
             0, 0.80392163991928, 0.80392163991928,
         }
         },
-        [shared.key.shock] = { palette = tes3.palette.linkColor, color = {
+        [tes3.effect.shockDamage] = { palette = tes3.palette.linkColor, color = {
             0.43921571969986, 0.49411767721176, 0.8117647767067,
         }
         },
-        [shared.key.poison] = { palette = tes3.palette.fatigueColor, color = {
+        [tes3.effect.poison] = { palette = tes3.palette.fatigueColor, color = {
             0, 0.58823531866074, 0.23529413342476,
         }
         },
-        [shared.key.absorbHealth] = { palette = nil, color = nil },
-        [shared.key.damageHealth] = { palette = nil, color = nil },
-        [shared.key.drainHealth] = { palette = nil, color = nil },
-        [shared.key.sunDamage] = { palette = nil, color = nil },
+        [tes3.effect.absorbHealth] = { palette = nil, color = nil },
+        [tes3.effect.damageHealth] = { palette = nil, color = nil },
+        [tes3.effect.drainHealth] = { palette = nil, color = nil },
+        [tes3.effect.sunDamage] = { palette = nil, color = nil },
     }
 
-    for k, v in pairs(self.names) do
+    for _, v in pairs(self.weaponNames) do
         if v.gmst and not v.name then
             v.name = tes3.findGMST(v.gmst).value
         end
     end
-    for k, v in pairs(self.colors) do
+    for _, v in pairs(self.effectNames) do
+        if v.gmst and not v.name then
+            v.name = tes3.findGMST(v.gmst).value
+        end
+    end
+    for _, v in pairs(self.colors) do
         if v.palette and not v.color then
             v.color = tes3ui.getPalette(v.palette)
         end
     end
-    -- PrintTable(self.names)
-    -- PrintTable(self.colors)
+    PrintTable(self.weaponNames)
+    PrintTable(self.effectNames)
+    PrintTable(self.colors)
 
     self.headerColor = tes3ui.getPalette(tes3.palette.headerColor)
     self.weakColor = tes3ui.getPalette(tes3.palette.disabledColor)
@@ -153,9 +159,9 @@ function Drawer.DisplayWeaponDPS(self, element, data)
         -- label
         local text = nil
         if config.minmaxRange then
-            text = string.format("%s: %.1f - %.1f", self.names[k].name, v.min, v.max)
+            text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
         else
-            text = string.format("%s: %.1f", self.names[k].name, v.max)
+            text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
         end
         local label = CreateLabel(block, self.idWeaponLabel, text)
         if not data.highestType[k] and self.weakColor then
@@ -184,7 +190,7 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
             end
 
             -- label
-            local label = CreateLabel(block, self.idEffectLabel, string.format("%s: %.1f", self.names[k].name, v))
+            local label = CreateLabel(block, self.idEffectLabel, string.format("%s: %.1f", self.effectNames[k].name, v))
             local col = self.colors[k]
             if col and col.color then
                 label.color = col.color

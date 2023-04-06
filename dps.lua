@@ -5,26 +5,14 @@ function DPS.new()
     return dps
 end
 
-local shared = require("longod.DPSTooltips.shared")
 local logger = require("longod.DPSTooltips.logger")
 local config = require("longod.DPSTooltips.config").Load()
 
--- TODO i think no necessary my original shared index, it was defined for pairing eg. fire damage and resist fire, and display order
--- but more complex eg. resist magicka or others
--- try to use tes3.effect id
--- or tes3.effectAttribute
 local function CreateScratchData()
     local data = {
         attacker = {
-            positives = {
-                [shared.key.magicka] = 0,
-                [shared.key.attack] = 0, -- means accuracy
-                [shared.key.dispel] = 0, -- both, but unresist
-            },
-            negatives = {
-                [shared.key.magicka] = 0,
-                [shared.key.blind] = 0,
-            },
+            positives = {},
+            negatives = {},
             damageAttributes = {},
             damageSkills = {},
             drainAttributes = {},
@@ -35,37 +23,9 @@ local function CreateScratchData()
             restoreSkills = {},
         },
         target = {
-            damages = {
-                [shared.key.fire] = 0,
-                [shared.key.frost] = 0,
-                [shared.key.shock] = 0,
-                [shared.key.poison] = 0,
-                [shared.key.absorbHealth] = 0,
-                [shared.key.damageHealth] = 0,
-                [shared.key.drainHealth] = 0,
-                [shared.key.sunDamage] = 0,
-            },
-            positives = {
-                [shared.key.fire] = 0,
-                [shared.key.frost] = 0,
-                [shared.key.shock] = 0,
-                [shared.key.poison] = 0,
-                [shared.key.magicka] = 0,
-                [shared.key.shield] = 0,
-                [shared.key.normalWeapons] = 0,
-                [shared.key.sanctuary] = 0,
-                [shared.key.dispel] = 0,
-                [shared.key.spellAbsorption] = 1, -- multiply
-                [shared.key.reflect] = 1,         -- multiply
-            },
-            negatives = {
-                [shared.key.fire] = 0,
-                [shared.key.frost] = 0,
-                [shared.key.shock] = 0,
-                [shared.key.poison] = 0,
-                [shared.key.magicka] = 0,
-                [shared.key.normalWeapons] = 0,
-            },
+            damages = {},
+            positives = {},
+            negatives = {},
             damageAttributes = {},
             damageSkills = {},
             drainAttributes = {},
@@ -74,15 +34,13 @@ local function CreateScratchData()
             fortifySkills = {},
             restoreAttributes = {},
             restoreSkills = {},
-            restoreHealth = 0,
-            fortifyHealth = 0,
         },
     }
     return data
 end
 
 -- TODO modifieable for mod
--- {target, attacker}
+-- todo name {target, attacker}
 local attributeFilter = {
     [tes3.attribute.strength] = { false, true }, -- damage
     [tes3.attribute.intelligence] = { false, false },
@@ -131,9 +89,9 @@ local function IsAffectedAttribute(params)
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
         if params.isSelf then
-            return f[2]
+            return params.attacker and f[2]
         else
-            return f[1]
+            return params.target and f[1]
         end
     else
         return false
@@ -145,13 +103,30 @@ local function IsAffectedSkill(params)
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
         if params.isSelf then
-            return f[2]
+            return params.attacker and f[2]
         else
-            return f[1]
+            return params.target and f[1]
         end
     else
         return false
     end
+end
+
+local function GetValue(tbl, key, initial)
+    if not tbl[key] then -- no allocate if it does not exists
+        return initial
+    end
+    return tbl[key]
+end
+
+local function AddValue(tbl, key, value)
+    tbl[key] = GetValue(tbl, key, 0) + value
+    return tbl[key]
+end
+
+local function MulValue(tbl, key, value)
+    tbl[key] = GetValue(tbl, key, 1) * value
+    return tbl[key]
 end
 
 local function InverseNormalizeMagnitude(m)
@@ -163,20 +138,23 @@ local function CalculateDPS(damage, speed)
 end
 
 local function DamageHealth(params)
-    if params.isSelf then
+    if params.isSelf then 
     else
-        params.data.target.damages[params.key] = params.data.target.damages[params.key] +
-            CalculateDPS(params.value, params.speed)
-        return true
+        if params.target then
+            AddValue(params.data.target.damages, params.key, CalculateDPS(params.value, params.speed))
+            return true
+        end
     end
     return false
 end
 
 local function DrainHealth(params)
-    if params.isSelf then
+    if params.isSelf then 
     else
-        params.data.target.damages[params.key] = params.data.target.damages[params.key] + params.value
-        return true
+        if params.target then
+            AddValue(params.data.target.damages, params.key, params.value)
+            return true
+        end
     end
     return false
 end
@@ -184,41 +162,38 @@ end
 local function CurePoison(params)
     if params.isSelf then
     else
-        params.data.target.damages[params.key] = 0
-        return true
+        if params.target then
+            params.data.target.positives[params.key] = 1
+            return true
+        end
     end
     return false
 end
 
-local function RestoreHealth(params)
-    if params.isSelf then
-        return false
-    else
-        params.data.target.restoreHealth = params.data.target.restoreHealth + CalculateDPS(params.value, params.speed)
-        return true
-    end
-end
-
-local function FortifyHealth(params)
-    if params.isSelf then
-        return false
-    else
-        -- in DPS calculation, same effect sorce income once so just adding,
-        -- if simlate total affetion then it consider to stack same effect source
-        params.data.target.fortifyHealth = params.data.target.fortifyHealth + params.value
-        return true
-    end
-end
-
 local function PositiveModifier(params)
     if params.isSelf then
-        if params.data.attacker.positives[params.key] then
-            params.data.attacker.positives[params.key] = params.data.attacker.positives[params.key] + params.value
+        if params.attacker then
+            AddValue(params.data.attacker.positives, params.key, params.value)
             return true
         end
     else
-        if params.data.target.positives[params.key] then
-            params.data.target.positives[params.key] = params.data.target.positives[params.key] + params.value
+        if params.target then
+            AddValue(params.data.target.positives, params.key, params.value)
+            return true
+        end
+    end
+    return false
+end
+
+local function PositiveModifierWithSpeed(params)
+    if params.isSelf then
+        if params.attacker then
+            AddValue(params.data.attacker.positives, params.key, CalculateDPS(params.value, params.speed))
+            return true
+        end
+    else
+        if params.target then
+            AddValue(params.data.target.positives, params.key, CalculateDPS(params.value, params.speed))
             return true
         end
     end
@@ -226,14 +201,14 @@ local function PositiveModifier(params)
 end
 
 local function NegativeModifier(params)
-    if params.isSelf then
-        if params.data.attacker.negatives[params.key] then
-            params.data.attacker.negatives[params.key] = params.data.attacker.negatives[params.key] + params.value
+    if params.isSelf then 
+        if params.attacker then
+            AddValue(params.data.attacker.negatives, params.key, params.value)
             return true
         end
     else
-        if params.data.target.negatives[params.key] then
-            params.data.target.negatives[params.key] = params.data.target.negatives[params.key] + params.value
+        if params.target then
+            AddValue(params.data.target.negatives, params.key, params.value)
             return true
         end
     end
@@ -245,10 +220,8 @@ end
 local function MultModifier(params)
     if params.isSelf then
     else
-        if params.data.target.positives[params.key] then
-            -- percent
-            params.data.target.positives[params.key] = params.data.target.positives[params.key] *
-                InverseNormalizeMagnitude(params.value)
+        if params.target then
+            MulValue(params.data.target.positives, params.key, InverseNormalizeMagnitude(params.value))
             return true
         end
     end
@@ -257,12 +230,17 @@ end
 
 local function ShieldElement(params)
     if params.isSelf then
-        params.data.target.damages[params.key] = params.data.target.damages[params.key] +
-            CalculateDPS(params.value * 0.1, params.speed)
+        if params.attacker then
+            AddValue(params.data.target.damages, params.key, CalculateDPS(params.value * 0.1, params.speed))
+            return true
+        end
     else
-        params.data.target.positives[params.key] = params.data.target.positives[params.key] + params.value
+        if params.target then
+            AddValue(params.data.target.positives, params.key, params.value)
+            return true
+        end
     end
-    return true
+    return false
 end
 
 local function FortifyAttribute(params)
@@ -271,17 +249,9 @@ local function FortifyAttribute(params)
     end
     if params.isSelf then
         -- TODO if player equiped constant effect weapon then skip this.
-        local a = params.data.attacker.fortifyAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + params.value
+        AddValue(params.data.attacker.fortifyAttributes, params.attribute, params.value)
     else
-        local a = params.data.target.fortifyAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + params.value
+        AddValue(params.data.target.fortifyAttributes, params.attribute, params.value)
     end
     return true
 end
@@ -291,17 +261,9 @@ local function DamageAttribute(params)
         return false
     end
     if params.isSelf then
-        local a = params.data.attacker.damageAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.attacker.damageAttributes, params.attribute, CalculateDPS(params.value, params.speed))
     else
-        local a = params.data.target.damageAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.target.damageAttributes, params.attribute, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -312,17 +274,9 @@ local function DrainAttribute(params)
     end
     if params.isSelf then
         -- TODO if player equiped constant effect weapon then skip this.
-        local a = params.data.attacker.drainAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + params.value
+        AddValue(params.data.attacker.drainAttributes, params.attribute, params.value)
     else
-        local a = params.data.target.drainAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + params.value
+        AddValue(params.data.target.drainAttributes, params.attribute, params.value)
     end
     return true
 end
@@ -333,6 +287,7 @@ local function AbsorbAttribute(params)
     else
         local t = DrainAttribute(params)
         params.isSelf = true               -- TODO immutalbe
+        params.attacker = true -- fortifyAttribute
         local a = FortifyAttribute(params) -- value is applied resist/weakness magicka?
         return t or a
     end
@@ -343,17 +298,9 @@ local function RestoreAttribute(params)
         return false
     end
     if params.isSelf then
-        local a = params.data.attacker.restoreAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.attacker.restoreAttributes, params.attribute, CalculateDPS(params.value, params.speed))
     else
-        local a = params.data.target.restoreAttributes
-        if not a[params.attribute] then
-            a[params.attribute] = 0
-        end
-        a[params.attribute] = a[params.attribute] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.target.restoreAttributes, params.attribute, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -364,17 +311,9 @@ local function FortifySkill(params)
     end
     if params.isSelf then
         -- TODO if player equiped constant effect weapon then skip this.
-        local a = params.data.attacker.fortifySkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + params.value
+        AddValue(params.data.attacker.fortifySkills, params.skill, params.value)
     else
-        local a = params.data.target.fortifySkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + params.value
+        AddValue(params.data.target.fortifySkills, params.skill, params.value)
     end
     return true
 end
@@ -384,17 +323,9 @@ local function DamageSkill(params)
         return false
     end
     if params.isSelf then
-        local a = params.data.attacker.damageSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.attacker.damageSkills, params.skill, CalculateDPS(params.value, params.speed))
     else
-        local a = params.data.target.damageSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.target.damageSkills, params.skill, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -405,17 +336,9 @@ local function DrainSkill(params)
     end
     if params.isSelf then
         -- TODO if player equiped constant effect weapon then skip this.
-        local a = params.data.attacker.drainSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + params.value
+        AddValue(params.data.attacker.drainSkills, params.skill, params.value)
     else
-        local a = params.data.target.drainSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + params.value
+        AddValue(params.data.target.drainSkills, params.skill, params.value)
     end
     return true
 end
@@ -426,6 +349,7 @@ local function AbsorbSkill(params)
     else
         local t = DrainSkill(params)
         params.isSelf = true           -- TODO immutable
+        params.attacker = true -- fortifySkill
         local a = FortifySkill(params) -- value is applied resist/weakness magicka?
         return t or a
     end
@@ -436,17 +360,9 @@ local function RestoreSkill(params)
         return false
     end
     if params.isSelf then
-        local a = params.data.attacker.restoreSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.attacker.restoreSkills, params.skill, CalculateDPS(params.value, params.speed))
     else
-        local a = params.data.target.restoreSkills
-        if not a[params.skill] then
-            a[params.skill] = 0
-        end
-        a[params.skill] = a[params.skill] + CalculateDPS(params.value, params.speed)
+        AddValue(params.data.target.restoreSkills, params.skill, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -458,10 +374,10 @@ local resolver = {
     -- waterBreathing 0
     -- swiftSwim 1
     -- waterWalking 2
-    [3] = { func = PositiveModifier, key = shared.key.shield }, -- shield 3
-    [4] = { func = ShieldElement, key = shared.key.fire },      -- fireShield 4
-    [5] = { func = ShieldElement, key = shared.key.shock },     -- lightningShield 5
-    [6] = { func = ShieldElement, key = shared.key.frost },     -- frostShield 6
+    [3] = { func = PositiveModifier, attacker = false, target = true }, -- shield 3
+    [4] = { func = ShieldElement, attacker = true, target = true },      -- fireShield 4
+    [5] = { func = ShieldElement, attacker = true, target = true },     -- lightningShield 5
+    [6] = { func = ShieldElement, attacker = true, target = true },     -- frostShield 6
     -- burden 7
     -- feather 8
     -- jump 9
@@ -469,40 +385,40 @@ local resolver = {
     -- slowFall 11
     -- lock 12
     -- open 13
-    [14] = { func = DamageHealth, key = shared.key.fire },        -- fireDamage 14
-    [15] = { func = DamageHealth, key = shared.key.shock },       -- shockDamage 15
-    [16] = { func = DamageHealth, key = shared.key.frost },       -- frostDamage 16
-    [17] = { func = DrainAttribute, key = shared.key.attribute }, -- drainAttribute 17
-    [18] = { func = DrainHealth, key = shared.key.drainHealth },  -- drainHealth 18
+    [14] = { func = DamageHealth, attacker = false, target = true },        -- fireDamage 14
+    [15] = { func = DamageHealth, attacker = false, target = true },       -- shockDamage 15
+    [16] = { func = DamageHealth, attacker = false, target = true },       -- frostDamage 16
+    [17] = { func = DrainAttribute, attacker = true, target = true }, -- drainAttribute 17
+    [18] = { func = DrainHealth, attacker = false, target = true },  -- drainHealth 18
     -- drainMagicka 19
     -- drainFatigue 20
-    [21] = { func = DrainSkill, key = shared.key.skill },          -- drainSkill 21
-    [22] = { func = DamageAttribute, key = shared.key.attribute }, -- damageAttribute 22
-    [23] = { func = DamageHealth, key = shared.key.damageHealth }, -- damageHealth 23
+    [21] = { func = DrainSkill, attacker = true, target = true },          -- drainSkill 21
+    [22] = { func = DamageAttribute, attacker = true, target = true }, -- damageAttribute 22
+    [23] = { func = DamageHealth, attacker = false, target = true }, -- damageHealth 23
     -- damageMagicka 24
     -- damageFatigue 25
-    [26] = { func = DamageSkill, key = shared.key.skill },        -- damageSkill 26
-    [27] = { func = DamageHealth, key = shared.key.poison },      -- poison 27
-    [28] = { func = NegativeModifier, key = shared.key.fire },    -- weaknesstoFire 28
-    [29] = { func = NegativeModifier, key = shared.key.frost },   -- weaknesstoFrost 29
-    [30] = { func = NegativeModifier, key = shared.key.shock },   -- weaknesstoShock 30
-    [31] = { func = NegativeModifier, key = shared.key.magicka }, -- weaknesstoMagicka 31
+    [26] = { func = DamageSkill, attacker = true, target = true },        -- damageSkill 26
+    [27] = { func = DamageHealth, attacker = false, target = true },      -- poison 27
+    [28] = { func = NegativeModifier, attacker = false, target = true },    -- weaknesstoFire 28
+    [29] = { func = NegativeModifier, attacker = false, target = true },   -- weaknesstoFrost 29
+    [30] = { func = NegativeModifier, attacker = false, target = true },   -- weaknesstoShock 30
+    [31] = { func = NegativeModifier, attacker = true, target = true }, -- weaknesstoMagicka 31
     -- weaknesstoCommonDisease 32
     -- weaknesstoBlightDisease 33
     -- weaknesstoCorprusDisease 34
-    [35] = { func = NegativeModifier, key = shared.key.poison },        -- weaknesstoPoison 35
-    [36] = { func = NegativeModifier, key = shared.key.normalWeapons }, -- weaknesstoNormalWeapons 36
+    [35] = { func = NegativeModifier, attacker = false, target = true },        -- weaknesstoPoison 35
+    [36] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoNormalWeapons 36
     -- disintegrateWeapon 37
     [38] = nil,                                                         -- disintegrateArmor 38
     -- invisibility 39
     -- chameleon 40
     -- light 41
-    [42] = { func = PositiveModifier, key = shared.key.sanctuary }, -- sanctuary 42
+    [42] = { func = PositiveModifier, attacker = false, target = true }, -- sanctuary 42
     -- nightEye 43
     -- charm 44
     -- paralyze 45
     -- silence 46
-    [47] = { func = NegativeModifier, key = shared.key.blind }, -- blind 47
+    [47] = { func = NegativeModifier, attacker = true, target = false }, -- blind 47
     -- sound 48
     -- calmHumanoid 49
     -- calmCreature 50
@@ -512,7 +428,7 @@ local resolver = {
     -- demoralizeCreature 54
     -- rallyHumanoid 55
     -- rallyCreature 56
-    [57] = { func = PositiveModifier, key = shared.key.dispel }, -- dispel 57
+    [57] = { func = PositiveModifier, attacker = true, target = true }, -- dispel 57
     -- soultrap 58
     -- telekinesis 59
     -- mark 60
@@ -522,38 +438,38 @@ local resolver = {
     -- detectAnimal 64
     -- detectEnchantment 65
     -- detectKey 66
-    [67] = { func = MultModifier, key = shared.key.spellAbsorption }, -- spellAbsorption 67
-    [68] = { func = MultModifier, key = shared.key.reflect },         -- reflect 68
+    [67] = { func = MultModifier, attacker = true, target = true }, -- spellAbsorption 67
+    [68] = { func = MultModifier, attacker = true, target = true },         -- reflect 68
     -- cureCommonDisease 69
     -- cureBlightDisease 70
     -- cureCorprusDisease 71
-    [72] = { func = CurePoison, key = shared.key.poison },          -- curePoison 72
+    [72] = { func = CurePoison, attacker = false, target = true },          -- curePoison 72
     -- cureParalyzation 73
-    [74] = { func = RestoreAttribute, key = shared.key.attribute }, -- restoreAttribute 74
-    [75] = { func = RestoreHealth, key = shared.key.health },       -- restoreHealth 75
+    [74] = { func = RestoreAttribute, attacker = true, target = true }, -- restoreAttribute 74
+    [75] = { func = PositiveModifierWithSpeed, attacker = false, target = true },       -- restoreHealth 75
     -- restoreMagicka 76
     -- restoreFatigue 77
-    [78] = { func = RestoreSkill, key = shared.key.skill },         -- restoreSkill 78
-    [79] = { func = FortifyAttribute, key = shared.key.attribute }, -- fortifyAttribute 79
-    [80] = { func = FortifyHealth, key = shared.key.health },       -- fortifyHealth 80
+    [78] = { func = RestoreSkill, attacker = true, target = true },         -- restoreSkill 78
+    [79] = { func = FortifyAttribute, attacker = true, target = true }, -- fortifyAttribute 79
+    [80] = { func = PositiveModifier, attacker = false, target = true },       -- fortifyHealth 80
     -- fortifyMagicka 81
     -- fortifyFatigue 82
-    [83] = { func = FortifySkill, key = shared.key.skill },        -- fortifySkill 83
+    [83] = { func = FortifySkill, attacker = true, target = true },        -- fortifySkill 83
     -- fortifyMaximumMagicka 84
-    [85] = { func = AbsorbAttribute, key = shared.key.attribute }, -- absorbAttribute 85
-    [86] = { func = DamageHealth, key = shared.key.absorbHealth }, -- absorbHealth 86
+    [85] = { func = AbsorbAttribute, attacker = false, target = true }, -- absorbAttribute 85
+    [86] = { func = DamageHealth, attacker = false, target = true }, -- absorbHealth 86
     -- absorbMagicka 87
     -- absorbFatigue 88
-    [89] = { func = AbsorbSkill, key = shared.key.skill },        -- absorbSkill 89
-    [90] = { func = PositiveModifier, key = shared.key.fire },    -- resistFire 90
-    [91] = { func = PositiveModifier, key = shared.key.frost },   -- resistFrost 91
-    [92] = { func = PositiveModifier, key = shared.key.shock },   -- resistShock 92
-    [93] = { func = PositiveModifier, key = shared.key.magicka }, -- resistMagicka 93
+    [89] = { func = AbsorbSkill, attacker = false, target = true },        -- absorbSkill 89
+    [90] = { func = PositiveModifier, attacker = false, target = true },    -- resistFire 90
+    [91] = { func = PositiveModifier, attacker = false, target = true },   -- resistFrost 91
+    [92] = { func = PositiveModifier, attacker = false, target = true },   -- resistShock 92
+    [93] = { func = PositiveModifier, attacker = true, target = true }, -- resistMagicka 93
     -- resistCommonDisease 94
     -- resistBlightDisease 95
     -- resistCorprusDisease 96
-    [97] = { func = PositiveModifier, key = shared.key.poison },        -- resistPoison 97
-    [98] = { func = PositiveModifier, key = shared.key.normalWeapons }, -- resistNormalWeapons 98
+    [97] = { func = PositiveModifier, attacker = false, target = true },        -- resistPoison 97
+    [98] = { func = PositiveModifier, attacker = false, target = true }, -- resistNormalWeapons 98
     -- resistParalysis 99
     -- removeCurse 100
     -- turnUndead 101
@@ -572,7 +488,7 @@ local resolver = {
     -- summonFlameAtronach 114
     -- summonFrostAtronach 115
     -- summonStormAtronach 116
-    [117] = { func = PositiveModifier, key = shared.key.attack }, -- fortifyAttack 117
+    [117] = { func = PositiveModifier, attacker = true, target = false }, -- fortifyAttack 117
     -- commandCreature 118
     -- commandHumanoid 119
     [120] = nil, -- boundDagger 120
@@ -590,7 +506,7 @@ local resolver = {
     -- corprus 132
     -- vampirism 133
     -- summonCenturionSphere 134
-    [135] = { func = DamageHealth, key = shared.key.sunDamage }, -- sunDamage 135
+    [135] = { func = DamageHealth, attacker = false, target = true }, -- sunDamage 135
     -- stuntedMagicka 136
     -- summonFabricant 137
     -- callWolf 138
@@ -601,6 +517,8 @@ local resolver = {
 }
 
 function DPS.Initialize(self)
+    ---@diagnostic disable: need-check-nil
+    
     -- resolve MCP or mod
     self.strengthBase = 0.5
     self.strengthMultiply = 0.01
@@ -656,21 +574,23 @@ function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnS
                         local isSelf = effect.rangeType == tes3.effectRange.self
                         local affect = resolver.func({
                             data = data,
-                            key = resolver.key,
+                            key = id,
                             value = value,
                             speed = weaponSpeed,
                             isSelf = isSelf,
-                            attribute = effect.attribute, -- not convert id
-                            skill = effect.skill,         -- not convert id
+                            attacker = resolver.attacker,
+                            target = resolver.target,            
+                            attribute = effect.attribute,
+                            skill = effect.skill,        
                             constant = constant,
                             equiped = false,              -- TODO for constant
                         })
-                        if affect and resolver.key then
+                        if affect and id ~= nil then
                             -- adding own key, then merge on resolve phase
-                            if not icons[resolver.key] then
-                                icons[resolver.key] = {}
+                            if not icons[id] then
+                                icons[id] = {}
                             end
-                            table.insert(icons[resolver.key], effect.object.icon)
+                            table.insert(icons[id], effect.object.icon)
                         end
                     end
                 end
@@ -729,18 +649,18 @@ end
 function DPS.GetWeaponBaseDamage(self, weapon, marksman)
     local baseDamage = {}
     if marksman then
-        baseDamage[shared.key.attack] = { min = weapon.chopMin, max = weapon.chopMax }
+        baseDamage[tes3.physicalAttackType.projectile] = { min = weapon.chopMin, max = weapon.chopMax }
     else
-        baseDamage[shared.key.slash] = { min = weapon.slashMin, max = weapon.slashMax }
-        baseDamage[shared.key.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
-        baseDamage[shared.key.chop] = { min = weapon.chopMin, max = weapon.chopMax }
+        baseDamage[tes3.physicalAttackType.slash] = { min = weapon.slashMin, max = weapon.slashMax }
+        baseDamage[tes3.physicalAttackType.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
+        baseDamage[tes3.physicalAttackType.chop] = { min = weapon.chopMin, max = weapon.chopMax }
     end
 
     -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
     -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
     if weapon.type == tes3.weaponType.marksmanThrown and not self.throwWeaponAlreadyModified then
-        baseDamage[shared.key.attack].min = 2 * baseDamage[shared.key.attack].min
-        baseDamage[shared.key.attack].max = 2 * baseDamage[shared.key.attack].max
+        baseDamage[tes3.physicalAttackType.projectile].min = 2 * baseDamage[tes3.physicalAttackType.projectile].min
+        baseDamage[tes3.physicalAttackType.projectile].max = 2 * baseDamage[tes3.physicalAttackType.projectile].max
     end
 
     return baseDamage
@@ -803,8 +723,8 @@ local function ResolveEffectDPS(effect, icons)
         effectTotal = effectTotal + v
     end
     -- TODO add positive icons
-    effectTotal = effectTotal - effect.target.restoreHealth
-    effectTotal = effectTotal - effect.target.fortifyHealth -- temporary
+    effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.restoreHealth, 0)
+    effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.fortifyHealth, 0) -- temporary
     return effectTotal, effectDamages
 end
 
@@ -813,35 +733,51 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     effect.target.resists = {}
     effect.attacker.resists = {}
     -- resist/weakness magicka
-    local magicka = shared.key.magicka
+    local rm = tes3.effect.resistMagicka
+    local wm = tes3.effect.weaknesstoMagicka
     -- Once Resist Magicka reaches 100%, it's the only type of resistance that can't be broken by a Weakness effect, since Weakness is itself a magicka type spell.
     -- so if both apply, above works?
-    local targetResistMagicka = InverseNormalizeMagnitude(effect.target.positives[magicka])
-    targetResistMagicka = InverseNormalizeMagnitude(effect.target.negatives[magicka]) * targetResistMagicka
-    local attackerResistMagicka = InverseNormalizeMagnitude(effect.attacker.positives[magicka] + resistMagicka )
-    attackerResistMagicka = InverseNormalizeMagnitude(effect.attacker.negatives[magicka]) * attackerResistMagicka
-    effect.target.resists[magicka] = targetResistMagicka
-    effect.attacker.resists[magicka] = attackerResistMagicka
+    local targetResistMagicka = InverseNormalizeMagnitude(GetValue(effect.target.positives, rm, 0))
+    targetResistMagicka = InverseNormalizeMagnitude(GetValue(effect.target.negatives, wm, 0)) * targetResistMagicka
+    local attackerResistMagicka = InverseNormalizeMagnitude(GetValue(effect.attacker.positives, rm, 0) + resistMagicka )
+    attackerResistMagicka = InverseNormalizeMagnitude(GetValue(effect.attacker.negatives, wm, 0)) * attackerResistMagicka
+    effect.target.resists[rm] = targetResistMagicka
+    effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
     for k, v in pairs(effect.target.negatives) do
-        if k ~= shared.key.magicka then
+        if k ~= tes3.effect.weaknesstoMagicka then
             effect.target.negatives[k] = v * targetResistMagicka
         end
     end
     for k, v in pairs(effect.attacker.negatives) do
-        if k ~= shared.key.magicka then
+        if k ~= tes3.effect.weaknesstoMagicka then
             effect.attacker.negatives[k] = v * attackerResistMagicka
         end
     end
 
-    -- analytic
-    -- TODO apply, so resit/weakness magicka applied?
-    local reflectChance = effect.target.positives[shared.key.spellAbsorption] * effect.target.positives[shared.key.reflect]
-    local dispelChance = InverseNormalizeMagnitude(effect.target.positives[shared.key.dispel])
+    -- probability
+    -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
+    local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) * GetValue( effect.target.positives, tes3.effect.reflect, 1.0)
+    local dispelChance = InverseNormalizeMagnitude(GetValue(effect.target.positives, tes3.effect.dispel, 0))
     
-    -- resist/weakness elemental
-    for k, v in pairs(effect.target.negatives) do
-        effect.target.resists[k] = InverseNormalizeMagnitude(effect.target.positives[k] + v)
+    -- merge resist/weakness elemental and shield
+    local resistweakness = {
+        [tes3.effect.resistFire]          = {tes3.effect.weaknesstoFire, tes3.effect.fireShield},
+        [tes3.effect.resistFrost]         = {tes3.effect.weaknesstoFrost, tes3.effect.frostShield},
+        [tes3.effect.resistShock]         = {tes3.effect.weaknesstoShock, tes3.effect.lightningShield},
+        -- [tes3.effect.resistMagicka]       = {tes3.effect.weaknesstoMagicka}, -- pre calculated
+        [tes3.effect.resistPoison]        = {tes3.effect.weaknesstoPoison},
+        [tes3.effect.resistNormalWeapons] = {tes3.effect.weaknesstoNormalWeapons},
+    }
+    for k, v in pairs(resistweakness) do
+        local resist = GetValue(effect.target.positives, k, 0)
+        if v[2] then -- shield
+            resist = resist + GetValue(effect.target.positives, v[2], 0)
+        end
+        resist = resist - GetValue(effect.target.negatives, v[1], 0)
+        effect.target.resists[k] = InverseNormalizeMagnitude(resist)
+
+        -- TODO merge weakness icons
     end
 
     -- attrib, skill
@@ -865,20 +801,21 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     -- damage
     local e = effect.target
     local pair = {
-        [shared.key.fire] = shared.key.fire,
-        [shared.key.frost] = shared.key.frost,
-        [shared.key.shock] = shared.key.shock,
-        [shared.key.poison] = shared.key.poison,
-        [shared.key.absorbHealth] = shared.key.magicka,
-        [shared.key.damageHealth] = shared.key.magicka,
-        [shared.key.drainHealth] = shared.key.magicka, -- temporary
-        [shared.key.sunDamage] = nil, -- only vampire
+        [tes3.effect.fireDamage] = tes3.effect.resistFire,
+        [tes3.effect.frostDamage] = tes3.effect.resistFrost,
+        [tes3.effect.shockDamage] = tes3.effect.resistShock,
+        [tes3.effect.poison] = tes3.effect.resistPoison,
+        [tes3.effect.absorbHealth] = tes3.effect.resistMagicka,
+        [tes3.effect.damageHealth] = tes3.effect.resistMagicka,
+        [tes3.effect.drainHealth] = tes3.effect.resistMagicka, -- temporary down
+        [tes3.effect.sunDamage] = nil, -- only vampire
     }
 
     
     for k, v in pairs(pair) do
         if v then
-            e.damages[k] = e.damages[k] * e.resists[v]
+            local damage = GetValue(e.damages, k, 0) * GetValue(e.resists, v, 1.0)
+            e.damages[k] = damage
             
             -- merge icons if different between k and v
             if k ~= v and icons[v] then
@@ -932,7 +869,7 @@ end
 -- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
 -- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
 function DPS.CalculateDPS(self, weapon, itemData)
-    local useBestAttack = tes3.worldController.useBestAttack
+    local useBestAttack = tes3.worldController.useBestAttack -- TODO
     local marksman = weapon.isMelee == false
     local speed = weapon.speed
     if marksman then
@@ -945,7 +882,6 @@ function DPS.CalculateDPS(self, weapon, itemData)
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, str, marksman, config.accurateDamage)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
-    -- TODO apply reflect, abosorb modifier
 
     return {
         weaponDamageRange = weaponDamageRange,
@@ -976,16 +912,18 @@ function DPS.RunTest(self, unitwind)
             tes3.effect.sunDamage,
         }
         for _, v in ipairs(e) do
-            -- logger:trace(tostring(v))
+            --logger:debug(tostring(v))
             local r = resolver[v]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = v,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
             }
             local affect = r.func(params)
             unitwind:expect(affect).toBe(true)
@@ -997,16 +935,19 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("DrainHealth", function()
-        local r = resolver[tes3.effect.drainHealth]
+        local v = tes3.effect.drainHealth
+        local r = resolver[v]
         unitwind:expect(r).NOT.toBe(nil)
         local data = CreateScratchData()
         local params = {
             data = data,
-            key = r.key,
+            key = v,
             value = 10,
             speed = 2,
             isSelf = false,
-        }
+            attacker = r.attacker,
+            target = r.target,
+    }
         local affect = r.func(params)
         unitwind:expect(affect).toBe(true)
         unitwind:expect(data.target.damages[params.key]).toBe(10)
@@ -1016,64 +957,22 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("CurePoison", function()
-        local r = resolver[tes3.effect.poison]
+        local v = tes3.effect.curePoison
+        local r = resolver[v]
         unitwind:expect(r).NOT.toBe(nil)
         local data = CreateScratchData()
         local params = {
             data = data,
-            key = r.key,
+            key = v,
             value = 10,
             speed = 2,
             isSelf = false,
-        }
+            attacker = r.attacker,
+            target = r.target,
+    }
         local affect = r.func(params)
         unitwind:expect(affect).toBe(true)
-        unitwind:expect(data.target.damages[params.key]).toBe(20)
-
-        r = resolver[tes3.effect.curePoison]
-        unitwind:expect(r).NOT.toBe(nil)
-        params.key = r.key
-        affect = r.func(params)
-        unitwind:expect(affect).toBe(true)
-        unitwind:expect(data.target.damages[params.key]).toBe(0)
-        params.isSelf = true
-        affect = r.func(params)
-        unitwind:expect(affect).toBe(false)
-    end)
-
-    unitwind:test("RestoreHealth", function()
-        local r = resolver[tes3.effect.restoreHealth]
-        unitwind:expect(r).NOT.toBe(nil)
-        local data = CreateScratchData()
-        local params = {
-            data = data,
-            key = r.key,
-            value = 10,
-            speed = 2,
-            isSelf = false,
-        }
-        local affect = r.func(params)
-        unitwind:expect(affect).toBe(true)
-        unitwind:expect(data.target.restoreHealth).toBe(20)
-        params.isSelf = true
-        affect = r.func(params)
-        unitwind:expect(affect).toBe(false)
-    end)
-
-    unitwind:test("FortifyHealth", function()
-        local r = resolver[tes3.effect.fortifyHealth]
-        unitwind:expect(r).NOT.toBe(nil)
-        local data = CreateScratchData()
-        local params = {
-            data = data,
-            key = r.key,
-            value = 10,
-            speed = 2,
-            isSelf = false,
-        }
-        local affect = r.func(params)
-        unitwind:expect(affect).toBe(true)
-        unitwind:expect(data.target.fortifyHealth).toBe(10)
+        unitwind:expect(data.target.positives[params.key]).toBe(1)
         params.isSelf = true
         affect = r.func(params)
         unitwind:expect(affect).toBe(false)
@@ -1084,6 +983,7 @@ function DPS.RunTest(self, unitwind)
             [tes3.effect.shield] = { true, false },
             [tes3.effect.sanctuary] = { true, false },
             [tes3.effect.dispel] = { true, true },
+            [tes3.effect.fortifyHealth] = { true, false },
             [tes3.effect.resistFire] = { true, false },
             [tes3.effect.resistFrost] = { true, false },
             [tes3.effect.resistShock] = { true, false },
@@ -1093,16 +993,18 @@ function DPS.RunTest(self, unitwind)
             [tes3.effect.fortifyAttack] = { false, true },
         }
         for k, v in pairs(e) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local r = resolver[k]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = v,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
             }
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v[1])
@@ -1118,6 +1020,28 @@ function DPS.RunTest(self, unitwind)
         end
     end)
 
+    unitwind:test("PositiveModifierWithSpeed", function()
+        local v = tes3.effect.restoreHealth
+        local r = resolver[v]
+        unitwind:expect(r).NOT.toBe(nil)
+        local data = CreateScratchData()
+        local params = {
+            data = data,
+            key = v,
+            value = 10,
+            speed = 2,
+            isSelf = false,
+            attacker = r.attacker,
+            target = r.target,
+    }
+        local affect = r.func(params)
+        unitwind:expect(affect).toBe(true)
+        unitwind:expect(data.target.positives[params.key]).toBe(20)
+        params.isSelf = true
+        affect = r.func(params)
+        unitwind:expect(affect).toBe(false)
+    end)
+
     unitwind:test("NegativeModifier", function()
         local e = {
             [tes3.effect.weaknesstoFire] = { true, false },
@@ -1129,16 +1053,18 @@ function DPS.RunTest(self, unitwind)
             [tes3.effect.blind] = { false, true },
         }
         for k, v in pairs(e) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local r = resolver[k]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = v,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
             }
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v[1])
@@ -1160,16 +1086,18 @@ function DPS.RunTest(self, unitwind)
             tes3.effect.reflect,
         }
         for _, v in ipairs(e) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local r = resolver[v]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = v,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
             }
             local affect = r.func(params)
             unitwind:expect(affect).toBe(true)
@@ -1189,16 +1117,18 @@ function DPS.RunTest(self, unitwind)
             tes3.effect.frostShield,
         }
         for _, v in ipairs(e) do
-            -- logger:trace(tostring(v))
+            -- logger:debug(tostring(v))
             local r = resolver[v]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = v,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
             }
             local affect = r.func(params)
             unitwind:expect(affect).toBe(true)
@@ -1211,17 +1141,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("FortifyAttribute", function()
-        local r = resolver[tes3.effect.fortifyAttribute]
+        local e = tes3.effect.fortifyAttribute
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in pairs(attributeFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 attribute = k,
             }
             local affect = r.func(params)
@@ -1239,17 +1172,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("DamageAttribute", function()
-        local r = resolver[tes3.effect.damageAttribute]
+        local e = tes3.effect.damageAttribute
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(attributeFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 attribute = k,
             }
             local affect = r.func(params)
@@ -1267,17 +1203,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("DrainAttribute", function()
-        local r = resolver[tes3.effect.drainAttribute]
+        local e = tes3.effect.drainAttribute
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(attributeFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 attribute = k,
             }
             local affect = r.func(params)
@@ -1295,17 +1234,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("AbsorbAttribute", function()
-        local r = resolver[tes3.effect.absorbAttribute]
+        local e = tes3.effect.absorbAttribute
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(attributeFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 attribute = k,
             }
             local affect = r.func(params)
@@ -1323,17 +1265,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("RestoreAttribute", function()
-        local r = resolver[tes3.effect.restoreAttribute]
+        local e = tes3.effect.restoreAttribute
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(attributeFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 attribute = k,
             }
             local affect = r.func(params)
@@ -1351,17 +1296,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("FortifySkill", function()
-        local r = resolver[tes3.effect.fortifySkill]
+        local e = tes3.effect.fortifySkill
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(skillFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 skill = k,
             }
             local affect = r.func(params)
@@ -1379,17 +1327,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("DamageSkill", function()
-        local r = resolver[tes3.effect.damageSkill]
+        local e = tes3.effect.damageSkill
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(skillFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 skill = k,
             }
             local affect = r.func(params)
@@ -1407,17 +1358,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("DrainSkill", function()
-        local r = resolver[tes3.effect.drainSkill]
+        local e = tes3.effect.drainSkill
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(skillFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 skill = k,
             }
             local affect = r.func(params)
@@ -1435,17 +1389,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("AbsorbSkill", function()
-        local r = resolver[tes3.effect.absorbSkill]
+        local e = tes3.effect.absorbSkill
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(skillFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 skill = k,
             }
             local affect = r.func(params)
@@ -1463,17 +1420,20 @@ function DPS.RunTest(self, unitwind)
     end)
 
     unitwind:test("RestoreSkill", function()
-        local r = resolver[tes3.effect.restoreSkill]
+        local e = tes3.effect.restoreSkill
+        local r = resolver[e]
         unitwind:expect(r).NOT.toBe(nil)
         for k, v in ipairs(skillFilter) do
-            -- logger:trace(tostring(k))
+            -- logger:debug(tostring(k))
             local data = CreateScratchData()
             local params = {
                 data = data,
-                key = r.key,
+                key = e,
                 value = 10,
                 speed = 2,
                 isSelf = false,
+                attacker = r.attacker,
+                target = r.target,
                 skill = k,
             }
             local affect = r.func(params)

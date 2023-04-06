@@ -1,5 +1,5 @@
 local this = {}
-this.name = "DPS Tooltip"
+this.name = "DPS Tooltips"
 local config = require("longod.DPSTooltips.config")
 
 function this.OnModConfigReady()
