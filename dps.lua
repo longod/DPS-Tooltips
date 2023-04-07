@@ -651,6 +651,7 @@ function DPS.Initialize(self)
         self.blindFix = 1
     end
 
+    -- https://www.nexusmods.com/morrowind/mods/45913
     self.rangedWeaponCanCastOnSTrike = false
     if tes3.isModActive("Cast on Strike Bows.esp") then
         -- this MCP fix seems, deny on strile option when enchaning, exsisting ranged weapons on strike dont require this fix to torigger.
@@ -659,6 +660,7 @@ function DPS.Initialize(self)
         self.rangedWeaponCanCastOnSTrike = true
     end
 
+    -- https://www.nexusmods.com/morrowind/mods/49609
     -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
     -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
     self.throwWeaponAlreadyModified = false
@@ -835,9 +837,9 @@ end
 ---@param self DPS
 ---@param weapon tes3weapon
 ---@param marksman boolean
----@return DamageRange[]
+---@return { [tes3.physicalAttackType]: DamageRange }
 function DPS.GetWeaponBaseDamage(self, weapon, marksman)
-    local baseDamage = {} ---@type DamageRange[]
+    local baseDamage = {} ---@type { [tes3.physicalAttackType]: DamageRange }
     if marksman then
         baseDamage[tes3.physicalAttackType.projectile] = { min = weapon.chopMin, max = weapon.chopMax }
     else
@@ -871,7 +873,7 @@ end
 ---@param strength number
 ---@param marksman boolean
 ---@param accurateDamage boolean
----@return DamageRange[]
+---@return { [tes3.physicalAttackType]: DamageRange }
 function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman, accurateDamage)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
@@ -893,11 +895,11 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, mark
     return baseDamage
 end
 
----@param weaponDamages DamageRange[]
+---@param weaponDamages { [tes3.physicalAttackType]: DamageRange }
 ---@param effect ScratchData
 ---@param minmaxRange boolean
 ---@return DamageRange
----@return boolean[]
+---@return { [tes3.physicalAttackType] :boolean }
 local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange)
     -- highest damages flags
     -- TODO when useBestAttack pick highest average damage
@@ -924,6 +926,20 @@ local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange)
     return range, highestType
 end
 
+---@param icons { [tes3.effect]: string[] }
+---@param dest tes3.effect
+---@param src tes3.effect
+local function MergeIcons(icons, dest, src)
+    if dest ~= src and icons[src] then
+        if not icons[dest] then
+            icons[dest] = {}
+        end
+        for _, path in ipairs(icons[src]) do
+            table.insert(icons[dest], path)
+        end
+    end
+end
+
 ---@param effect ScratchData
 ---@param icons { [tes3.effect]: string[] }
 ---@return number
@@ -935,9 +951,11 @@ local function ResolveEffectDPS(effect, icons)
         effectDamages[k] = v
         effectTotal = effectTotal + v
     end
-    -- TODO add positive icons
     effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.restoreHealth, 0)
     effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.fortifyHealth, 0) -- temporary
+    -- TODO add positive icons, where is destination?
+    -- MergeIcons(icons, k, tes3.effect.restoreHealth)
+    -- MergeIcons(icons, k, tes3.effect.fortifyHealth)
     return effectTotal, effectDamages
 end
 
@@ -989,11 +1007,12 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         local resist = GetValue(effect.target.positives, k, 0)
         if v[2] then -- shield
             resist = resist + GetValue(effect.target.positives, v[2], 0)
+            MergeIcons(icons, k, v[2])
         end
         resist = resist - GetValue(effect.target.negatives, v[1], 0)
         effect.target.resists[k] = InverseNormalizeMagnitude(resist)
 
-        -- TODO merge weakness icons
+        MergeIcons(icons, k, v[1])
     end
 
     -- attrib, skill
@@ -1032,16 +1051,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         if v then
             local damage = GetValue(e.damages, k, 0) * GetValue(e.resists, v, 1.0)
             e.damages[k] = damage
-
-            -- merge icons if different between k and v
-            if k ~= v and icons[v] then
-                if not icons[k] then
-                    icons[k] = {}
-                end
-                for _, path in ipairs(icons[v]) do
-                    table.insert(icons[k], path)
-                end
-            end
+            MergeIcons(icons, k, v)
         end
     end
 end
@@ -1120,7 +1130,7 @@ end
 ---@return DPSData
 function DPS.CalculateDPS(self, weapon, itemData)
     -- TODO activeMagicEffectList
-    local useBestAttack = tes3.worldController.useBestAttack -- TODO
+    local useBestAttack = tes3.worldController.useBestAttack -- TODO mock
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed
     if marksman then
@@ -1235,6 +1245,9 @@ function DPS.RunTest(self, unitwind)
     unitwind:test("PositiveModifier", function()
         local e = {
             [tes3.effect.shield] = { true, false },
+            [tes3.effect.fireShield] = { true, false },
+            [tes3.effect.lightningShield] = { true, false },
+            [tes3.effect.frostShield] = { true, false },
             [tes3.effect.sanctuary] = { true, false },
             [tes3.effect.dispel] = { true, true },
             [tes3.effect.fortifyHealth] = { true, false },
@@ -1358,35 +1371,6 @@ function DPS.RunTest(self, unitwind)
             unitwind:expect(data.target.positives[params.key]).toBe(0.9)
             affect = r.func(params)
             unitwind:expect(data.target.positives[params.key]).toBe(0.81)
-            params.isSelf = true
-            affect = r.func(params)
-            unitwind:expect(affect).toBe(false)
-        end
-    end)
-
-    unitwind:test("ShieldElement", function()
-        local e = {
-            tes3.effect.fireShield,
-            tes3.effect.lightningShield,
-            tes3.effect.frostShield,
-        }
-        for _, v in ipairs(e) do
-            -- logger:debug(tostring(v))
-            local r = resolver[v]
-            unitwind:expect(r).NOT.toBe(nil)
-            local data = CreateScratchData()
-            local params = {
-                data = data,
-                key = v,
-                value = 10,
-                speed = 2,
-                isSelf = false,
-                attacker = r.attacker,
-                target = r.target,
-            }
-            local affect = r.func(params)
-            unitwind:expect(affect).toBe(true)
-            unitwind:expect(data.target.positives[params.key]).toBe(10)
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(false)
