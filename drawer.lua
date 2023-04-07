@@ -1,19 +1,54 @@
+---@class GMSTName 
+---@field gmst number
+---@field name string?
+
+---@class PaletteColor
+---@field palette string?
+---@field color number[]?
+
+---@class NameTable
+---@field [tes3.physicalAttackType|tes3.effect] GMSTName
+
+---@class ColorTable
+---@field [tes3.effect] PaletteColor
+
+---@class Drawer
+---@field config Config
+---@field weaponNames NameTable
+---@field effectNames NameTable
+---@field colors ColorTable
+---@field headerColor number[]
+---@field weakColor number[]
+---@field idDPSLabel number
+---@field idBorder number
+---@field idWeaponBlock number
+---@field idWeaponIcon number
+---@field idWeaponLabel number
+---@field idEffectBlock number
+---@field idEffectIcon number
+---@field idEffectLabel number
 local Drawer = {}
-function Drawer.new()
-    local drawer = {}
+
+---@param cfg Config?
+---@return Drawer
+function Drawer.new(cfg)
+    local drawer = {
+        config = cfg and cfg or require("longod.DPSTooltips.config").Load()
+    }
     setmetatable(drawer, { __index = Drawer })
     return drawer
 end
 
 local logger = require("longod.DPSTooltips.logger")
-local config = require("longod.DPSTooltips.config").Load()
 
-local function PrintTable(table, indent)
+---@param tbl table
+---@param indent number?
+local function PrintTable(tbl, indent)
     if not indent then
         indent = 0
     end
     ---@diagnostic disable: need-check-nil
-    for k, v in pairs(table) do
+    for k, v in pairs(tbl) do
         local space = string.rep("    ", indent)
         local str = space .. k .. ": "
         if type(v) == "table" then
@@ -28,12 +63,7 @@ local function PrintTable(table, indent)
     end
 end
 
-local function DisplayStub(data)
-    if config.logLevel == "TRACE" then
-        PrintTable(data)
-    end
-end
-
+---@param self Drawer
 function Drawer.Initialize(self)
     self.weaponNames = {
         [tes3.physicalAttackType.slash] = { gmst = tes3.gmst.sSlash, name = nil },
@@ -54,20 +84,16 @@ function Drawer.Initialize(self)
     self.colors = {
         [tes3.effect.fireDamage] = { palette = tes3.palette.healthColor, color = {
             0.78431379795074, 0.23529413342476, 0.11764706671238,
-        }
-        },
+        }},
         [tes3.effect.frostDamage] = { palette = tes3.palette.miscColor, color = {
             0, 0.80392163991928, 0.80392163991928,
-        }
-        },
+        }},
         [tes3.effect.shockDamage] = { palette = tes3.palette.linkColor, color = {
             0.43921571969986, 0.49411767721176, 0.8117647767067,
-        }
-        },
+        }},
         [tes3.effect.poison] = { palette = tes3.palette.fatigueColor, color = {
             0, 0.58823531866074, 0.23529413342476,
-        }
-        },
+        }},
         [tes3.effect.absorbHealth] = { palette = nil, color = nil },
         [tes3.effect.damageHealth] = { palette = nil, color = nil },
         [tes3.effect.drainHealth] = { palette = nil, color = nil },
@@ -106,6 +132,10 @@ function Drawer.Initialize(self)
     self.idEffectLabel = tes3ui.registerID("DPSTooltips_EffectLabel")
 end
 
+---@param element tes3uiElement
+---@param id number
+---@param color number[]?
+---@return tes3uiElement
 local function CreateBlock(element, id, color)
     local block = element:createBlock { id = id }
     block.autoWidth = true
@@ -116,6 +146,11 @@ local function CreateBlock(element, id, color)
     return block
 end
 
+---@param element tes3uiElement
+---@param id number
+---@param text string
+---@param color number[]?
+---@return tes3uiElement
 local function CreateLabel(element, id, text, color)
     local label = element:createLabel { text = text, id = id }
     label.wrapText = true
@@ -125,10 +160,21 @@ local function CreateLabel(element, id, text, color)
     return label
 end
 
+---@param self Drawer
+---@param data DPSData
+function Drawer.DisplayStub(self, data)
+    if self.config.logLevel == "TRACE" then
+        PrintTable(data)
+    end
+end
+
+---@param self Drawer
+---@param element tes3uiElement
+---@param data DPSData
 function Drawer.DisplayDPS(self, element, data)
     local text = nil
     -- need localize?
-    if config.minmaxRange then
+    if self.config.minmaxRange then
         text = string.format("DPS: %.1f - %.1f", data.weaponDamageRange.min + data.effectTotal,
             data.weaponDamageRange.max + data.effectTotal)
     else
@@ -138,42 +184,68 @@ function Drawer.DisplayDPS(self, element, data)
     label.color = self.headerColor
 end
 
+---@param self Drawer
+---@param element tes3uiElement
+---@param data DPSData
 function Drawer.DisplayWeaponDPS(self, element, data)
-    -- TODO fixed order if undsired order
-    for k, v in pairs(data.weaponDamages) do
-        local block = CreateBlock(element, self.idWeaponBlock)
-        block.borderAllSides = 1
+    local weaponOrder = {
+        tes3.physicalAttackType.slash,
+        tes3.physicalAttackType.thrust,
+        tes3.physicalAttackType.chop,
+        tes3.physicalAttackType.projectile,
+    }
 
-        -- icons if exists
-        if data.icons[k] then
-            for _, path in ipairs(data.icons[k]) do
-                local icon = block:createImage({
-                    id = self.idWeaponIcon,
-                    path = string.format("icons\\%s", path)
-                })
-                icon.borderTop = 1
-                icon.borderRight = 6
+    for _, k in ipairs(weaponOrder) do
+        local v = data.weaponDamages[k]
+        if v then
+            local block = CreateBlock(element, self.idWeaponBlock)
+            block.borderAllSides = 1
+
+            -- icons if exists
+            if data.icons[k] then
+                for _, path in ipairs(data.icons[k]) do
+                    local icon = block:createImage({
+                        id = self.idWeaponIcon,
+                        path = string.format("icons\\%s", path)
+                    })
+                    icon.borderTop = 1
+                    icon.borderRight = 6
+                end
             end
-        end
 
-        -- label
-        local text = nil
-        if config.minmaxRange then
-            text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
-        else
-            text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
-        end
-        local label = CreateLabel(block, self.idWeaponLabel, text)
-        if not data.highestType[k] and self.weakColor then
-            label.color = self.weakColor
+            -- label
+            local text = nil
+            if self.config.minmaxRange then
+                text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
+            else
+                text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
+            end
+            local label = CreateLabel(block, self.idWeaponLabel, text)
+            if not data.highestType[k] and self.weakColor then
+                label.color = self.weakColor
+            end
         end
     end
 end
 
+---@param self Drawer
+---@param element tes3uiElement
+---@param data DPSData
 function Drawer.DisplayEnchantmentDPS(self, element, data)
-    -- TODO fixed order if undsired order
-    for k, v in pairs(data.effectDamages) do
-        if v > 0 then
+    local effectOrder = {
+        tes3.effect.fireDamage,
+        tes3.effect.frostDamage,
+        tes3.effect.shockDamage,
+        tes3.effect.poison,
+        tes3.effect.absorbHealth,
+        tes3.effect.damageHealth,
+        tes3.effect.drainHealth,
+        tes3.effect.sunDamage,
+    }
+
+    for _, k in ipairs(effectOrder) do
+        local v = data.effectDamages[k]
+        if v and v > 0 then
             local block = CreateBlock(element, self.idEffectBlock)
             block.borderAllSides = 1
 
@@ -199,22 +271,25 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
     end
 end
 
-function Drawer.Display(self, tooltip, data)
+---@param self Drawer
+---@param element tes3uiElement
+---@param data DPSData
+function Drawer.Display(self, element, data)
     if not data then
         return
     end
 
-    DisplayStub(data)
+    self:DisplayStub(data)
 
-    if not tooltip then
+    if not element then
         return
     end
-    -- tooltip:createDivider()
+    -- element:createDivider()
 
-    self:DisplayDPS(tooltip, data)
+    self:DisplayDPS(element, data)
 
-    if config.breakdown then
-        local frame = tooltip:createThinBorder({ id = self.idBorder })
+    if self.config.breakdown then
+        local frame = element:createThinBorder({ id = self.idBorder })
         frame.flowDirection = "top_to_bottom"
         frame.borderAllSides = 4
         frame.borderLeft = 6
@@ -230,9 +305,9 @@ function Drawer.Display(self, tooltip, data)
         self:DisplayEnchantmentDPS(frame, data)
     end
 
-    -- tooltip:createDivider()
+    -- element:createDivider()
 
-    tooltip:updateLayout()
+    element:updateLayout()
 end
 
 return Drawer

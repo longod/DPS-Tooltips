@@ -1,14 +1,66 @@
+---@class DPS
+---@field config Config
+---@field fFatigueBase number
+---@field fFatigueMult number
+---@field fCombatInvisoMult number
+---@field fSwingBlockBase number
+---@field fSwingBlockMult number
+---@field fBlockStillBonus number
+---@field iBlockMinChance number
+---@field iBlockMaxChance number
+---@field fCombatArmorMinMult number
+---@field fDifficultyMult number
+---@field fDamageStrengthBase number
+---@field fDamageStrengthMult number
+---@field blindFix number
+---@field rangedWeaponCanCastOnSTrike boolean
+---@field throwWeaponAlreadyModified boolean
+---@field poisonCrafting boolean
 local DPS = {}
-function DPS.new()
-    local dps = {}
+
+---@param cfg Config?
+---@return DPS
+function DPS.new(cfg)
+    local dps = {
+        config = cfg and cfg or require("longod.DPSTooltips.config").Load()
+    }
     setmetatable(dps, { __index = DPS })
     return dps
 end
 
 local logger = require("longod.DPSTooltips.logger")
-local config = require("longod.DPSTooltips.config").Load()
 
+---@class Target
+---@field damages {[tes3.effect] : number}
+---@field positives {[tes3.effect] : number}
+---@field negatives {[tes3.effect] : number}
+---@field damageAttributes {[tes3.attribute] : number}
+---@field damageSkills {[tes3.skill] : number}
+---@field drainAttributes {[tes3.attribute] : number}
+---@field drainSkills {[tes3.skill] : number}
+---@field fortifyAttributes {[tes3.attribute] : number}
+---@field fortifySkills {[tes3.skill] : number}
+---@field restoreAttributes {[tes3.attribute] : number}
+---@field restoreSkills {[tes3.skill] : number}
+
+---@class ScratchData
+---@field attacker Target
+---@field target Target
+
+---@class Params
+---@field data table
+---@field key tes3.effect
+---@field value number
+---@field speed number
+---@field isSelf boolean
+---@field attacker boolean
+---@field target boolean
+---@field attribute tes3.attribute
+---@field skill tes3.skill
+
+---@return ScratchData
 local function CreateScratchData()
+    ---@type ScratchData
     local data = {
         attacker = {
             positives = {},
@@ -45,11 +97,11 @@ local attributeFilter = {
     [tes3.attribute.strength] = { false, true }, -- damage
     [tes3.attribute.intelligence] = { false, false },
     [tes3.attribute.willpower] = { true, true }, -- fatigue
-    [tes3.attribute.agility] = { true, true }, -- evade, hit, fatigue
-    [tes3.attribute.speed] = { false, false }, -- TODO weapon swing mod
+    [tes3.attribute.agility] = { true, true },   -- evade, hit, fatigue
+    [tes3.attribute.speed] = { false, false },   -- TODO weapon swing mod
     [tes3.attribute.endurance] = { true, true }, -- TODO realtime health calculate mod, fatigue
     [tes3.attribute.personality] = { false, false },
-    [tes3.attribute.luck] = { true, true }, -- evade, hit
+    [tes3.attribute.luck] = { true, true },      -- evade, hit
 }
 
 -- TODO should be combine current equipments
@@ -84,6 +136,8 @@ local skillFilter = {
     [tes3.skill.handToHand] = { false, false },
 }
 
+---@param params Params
+---@return boolean
 local function IsAffectedAttribute(params)
     local f = attributeFilter[params.attribute]
     if f then
@@ -98,6 +152,8 @@ local function IsAffectedAttribute(params)
     end
 end
 
+---@param params Params
+---@return boolean
 local function IsAffectedSkill(params)
     local f = skillFilter[params.skill]
     if f then
@@ -112,6 +168,10 @@ local function IsAffectedSkill(params)
     end
 end
 
+---@param tbl { [number]: number }
+---@param key number
+---@param initial number
+---@return number
 local function GetValue(tbl, key, initial)
     if not tbl[key] then -- no allocate if it does not exists
         return initial
@@ -119,26 +179,41 @@ local function GetValue(tbl, key, initial)
     return tbl[key]
 end
 
+---@param tbl { [number]: number }
+---@param key number
+---@param value number
+---@return number
 local function AddValue(tbl, key, value)
     tbl[key] = GetValue(tbl, key, 0) + value
     return tbl[key]
 end
 
+---@param tbl { [number]: number }
+---@param key number
+---@param value number
+---@return number
 local function MulValue(tbl, key, value)
     tbl[key] = GetValue(tbl, key, 1) * value
     return tbl[key]
 end
 
+---@param m number
+---@return number
 local function InverseNormalizeMagnitude(m)
     return math.max(100.0 - m, 0) / 100.0
 end
 
+---@param damage number
+---@param speed number
+---@return number
 local function CalculateDPS(damage, speed)
     return damage * speed
 end
 
+---@param params Params
+---@return boolean
 local function DamageHealth(params)
-    if params.isSelf then 
+    if params.isSelf then
     else
         if params.target then
             AddValue(params.data.target.damages, params.key, CalculateDPS(params.value, params.speed))
@@ -148,8 +223,10 @@ local function DamageHealth(params)
     return false
 end
 
+---@param params Params
+---@return boolean
 local function DrainHealth(params)
-    if params.isSelf then 
+    if params.isSelf then
     else
         if params.target then
             AddValue(params.data.target.damages, params.key, params.value)
@@ -159,6 +236,8 @@ local function DrainHealth(params)
     return false
 end
 
+---@param params Params
+---@return boolean
 local function CurePoison(params)
     if params.isSelf then
     else
@@ -170,6 +249,8 @@ local function CurePoison(params)
     return false
 end
 
+---@param params Params
+---@return boolean
 local function PositiveModifier(params)
     if params.isSelf then
         if params.attacker then
@@ -185,6 +266,8 @@ local function PositiveModifier(params)
     return false
 end
 
+---@param params Params
+---@return boolean
 local function PositiveModifierWithSpeed(params)
     if params.isSelf then
         if params.attacker then
@@ -200,8 +283,10 @@ local function PositiveModifierWithSpeed(params)
     return false
 end
 
+---@param params Params
+---@return boolean
 local function NegativeModifier(params)
-    if params.isSelf then 
+    if params.isSelf then
         if params.attacker then
             AddValue(params.data.attacker.negatives, params.key, params.value)
             return true
@@ -215,8 +300,9 @@ local function NegativeModifier(params)
     return false
 end
 
-
 -- only positive
+---@param params Params
+---@return boolean
 local function MultModifier(params)
     if params.isSelf then
     else
@@ -228,21 +314,9 @@ local function MultModifier(params)
     return false
 end
 
-local function ShieldElement(params)
-    if params.isSelf then
-        if params.attacker then
-            AddValue(params.data.target.damages, params.key, CalculateDPS(params.value * 0.1, params.speed))
-            return true
-        end
-    else
-        if params.target then
-            AddValue(params.data.target.positives, params.key, params.value)
-            return true
-        end
-    end
-    return false
-end
 
+---@param params Params
+---@return boolean
 local function FortifyAttribute(params)
     if not IsAffectedAttribute(params) then
         return false
@@ -256,6 +330,8 @@ local function FortifyAttribute(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function DamageAttribute(params)
     if not IsAffectedAttribute(params) then
         return false
@@ -268,6 +344,8 @@ local function DamageAttribute(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function DrainAttribute(params)
     if not IsAffectedAttribute(params) then
         return false
@@ -281,18 +359,22 @@ local function DrainAttribute(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function AbsorbAttribute(params)
     if params.isSelf then
         return false
     else
         local t = DrainAttribute(params)
         params.isSelf = true               -- TODO immutalbe
-        params.attacker = true -- fortifyAttribute
+        params.attacker = true             -- fortifyAttribute
         local a = FortifyAttribute(params) -- value is applied resist/weakness magicka?
         return t or a
     end
 end
 
+---@param params Params
+---@return boolean
 local function RestoreAttribute(params)
     if not IsAffectedAttribute(params) then
         return false
@@ -305,6 +387,8 @@ local function RestoreAttribute(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function FortifySkill(params)
     if not IsAffectedSkill(params) then
         return false
@@ -318,6 +402,8 @@ local function FortifySkill(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function DamageSkill(params)
     if not IsAffectedSkill(params) then
         return false
@@ -330,6 +416,8 @@ local function DamageSkill(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function DrainSkill(params)
     if not IsAffectedSkill(params) then
         return false
@@ -343,18 +431,22 @@ local function DrainSkill(params)
     return true
 end
 
+---@param params Params
+---@return boolean
 local function AbsorbSkill(params)
     if params.isSelf then
         return false
     else
         local t = DrainSkill(params)
         params.isSelf = true           -- TODO immutable
-        params.attacker = true -- fortifySkill
+        params.attacker = true         -- fortifySkill
         local a = FortifySkill(params) -- value is applied resist/weakness magicka?
         return t or a
     end
 end
 
+---@param params Params
+---@return boolean
 local function RestoreSkill(params)
     if not IsAffectedSkill(params) then
         return false
@@ -370,14 +462,22 @@ end
 
 -- only vanilla
 -- TODO add config mod efect
+
+---@class Resolver
+---@field func fun(params: Params): boolean
+---@field attacker boolean
+---@field target boolean
+
+---@class ResolverTable
+---@field [number] Resolver?
 local resolver = {
     -- waterBreathing 0
     -- swiftSwim 1
     -- waterWalking 2
     [3] = { func = PositiveModifier, attacker = false, target = true }, -- shield 3
-    [4] = { func = ShieldElement, attacker = true, target = true },      -- fireShield 4
-    [5] = { func = ShieldElement, attacker = true, target = true },     -- lightningShield 5
-    [6] = { func = ShieldElement, attacker = true, target = true },     -- frostShield 6
+    [4] = { func = PositiveModifier, attacker = false, target = true },    -- fireShield 4
+    [5] = { func = PositiveModifier, attacker = false, target = true },    -- lightningShield 5
+    [6] = { func = PositiveModifier, attacker = false, target = true },    -- frostShield 6
     -- burden 7
     -- feather 8
     -- jump 9
@@ -385,31 +485,31 @@ local resolver = {
     -- slowFall 11
     -- lock 12
     -- open 13
-    [14] = { func = DamageHealth, attacker = false, target = true },        -- fireDamage 14
-    [15] = { func = DamageHealth, attacker = false, target = true },       -- shockDamage 15
-    [16] = { func = DamageHealth, attacker = false, target = true },       -- frostDamage 16
-    [17] = { func = DrainAttribute, attacker = true, target = true }, -- drainAttribute 17
-    [18] = { func = DrainHealth, attacker = false, target = true },  -- drainHealth 18
+    [14] = { func = DamageHealth, attacker = false, target = true },     -- fireDamage 14
+    [15] = { func = DamageHealth, attacker = false, target = true },     -- shockDamage 15
+    [16] = { func = DamageHealth, attacker = false, target = true },     -- frostDamage 16
+    [17] = { func = DrainAttribute, attacker = true, target = true },    -- drainAttribute 17
+    [18] = { func = DrainHealth, attacker = false, target = true },      -- drainHealth 18
     -- drainMagicka 19
-    -- drainFatigue 20
-    [21] = { func = DrainSkill, attacker = true, target = true },          -- drainSkill 21
-    [22] = { func = DamageAttribute, attacker = true, target = true }, -- damageAttribute 22
-    [23] = { func = DamageHealth, attacker = false, target = true }, -- damageHealth 23
+    [20] = nil,                                                          -- drainFatigue 20
+    [21] = { func = DrainSkill, attacker = true, target = true },        -- drainSkill 21
+    [22] = { func = DamageAttribute, attacker = true, target = true },   -- damageAttribute 22
+    [23] = { func = DamageHealth, attacker = false, target = true },     -- damageHealth 23
     -- damageMagicka 24
-    -- damageFatigue 25
-    [26] = { func = DamageSkill, attacker = true, target = true },        -- damageSkill 26
-    [27] = { func = DamageHealth, attacker = false, target = true },      -- poison 27
-    [28] = { func = NegativeModifier, attacker = false, target = true },    -- weaknesstoFire 28
-    [29] = { func = NegativeModifier, attacker = false, target = true },   -- weaknesstoFrost 29
-    [30] = { func = NegativeModifier, attacker = false, target = true },   -- weaknesstoShock 30
-    [31] = { func = NegativeModifier, attacker = true, target = true }, -- weaknesstoMagicka 31
+    [25] = nil,                                                          -- damageFatigue 25
+    [26] = { func = DamageSkill, attacker = true, target = true },       -- damageSkill 26
+    [27] = { func = DamageHealth, attacker = false, target = true },     -- poison 27
+    [28] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoFire 28
+    [29] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoFrost 29
+    [30] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoShock 30
+    [31] = { func = NegativeModifier, attacker = true, target = true },  -- weaknesstoMagicka 31
     -- weaknesstoCommonDisease 32
     -- weaknesstoBlightDisease 33
     -- weaknesstoCorprusDisease 34
-    [35] = { func = NegativeModifier, attacker = false, target = true },        -- weaknesstoPoison 35
+    [35] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoPoison 35
     [36] = { func = NegativeModifier, attacker = false, target = true }, -- weaknesstoNormalWeapons 36
     -- disintegrateWeapon 37
-    [38] = nil,                                                         -- disintegrateArmor 38
+    [38] = nil,                                                          -- disintegrateArmor 38
     -- invisibility 39
     -- chameleon 40
     -- light 41
@@ -439,36 +539,36 @@ local resolver = {
     -- detectEnchantment 65
     -- detectKey 66
     [67] = { func = MultModifier, attacker = true, target = true }, -- spellAbsorption 67
-    [68] = { func = MultModifier, attacker = true, target = true },         -- reflect 68
+    [68] = { func = MultModifier, attacker = true, target = true }, -- reflect 68
     -- cureCommonDisease 69
     -- cureBlightDisease 70
     -- cureCorprusDisease 71
-    [72] = { func = CurePoison, attacker = false, target = true },          -- curePoison 72
+    [72] = { func = CurePoison, attacker = false, target = true },                -- curePoison 72
     -- cureParalyzation 73
-    [74] = { func = RestoreAttribute, attacker = true, target = true }, -- restoreAttribute 74
-    [75] = { func = PositiveModifierWithSpeed, attacker = false, target = true },       -- restoreHealth 75
+    [74] = { func = RestoreAttribute, attacker = true, target = true },           -- restoreAttribute 74
+    [75] = { func = PositiveModifierWithSpeed, attacker = false, target = true }, -- restoreHealth 75
     -- restoreMagicka 76
-    -- restoreFatigue 77
-    [78] = { func = RestoreSkill, attacker = true, target = true },         -- restoreSkill 78
-    [79] = { func = FortifyAttribute, attacker = true, target = true }, -- fortifyAttribute 79
-    [80] = { func = PositiveModifier, attacker = false, target = true },       -- fortifyHealth 80
+    [77] = nil,                                                                   -- restoreFatigue 77
+    [78] = { func = RestoreSkill, attacker = true, target = true },               -- restoreSkill 78
+    [79] = { func = FortifyAttribute, attacker = true, target = true },           -- fortifyAttribute 79
+    [80] = { func = PositiveModifier, attacker = false, target = true },          -- fortifyHealth 80
     -- fortifyMagicka 81
-    -- fortifyFatigue 82
-    [83] = { func = FortifySkill, attacker = true, target = true },        -- fortifySkill 83
+    [82] = nil,                                                                   -- fortifyFatigue 82
+    [83] = { func = FortifySkill, attacker = true, target = true },               -- fortifySkill 83
     -- fortifyMaximumMagicka 84
-    [85] = { func = AbsorbAttribute, attacker = false, target = true }, -- absorbAttribute 85
-    [86] = { func = DamageHealth, attacker = false, target = true }, -- absorbHealth 86
+    [85] = { func = AbsorbAttribute, attacker = false, target = true },           -- absorbAttribute 85
+    [86] = { func = DamageHealth, attacker = false, target = true },              -- absorbHealth 86
     -- absorbMagicka 87
-    -- absorbFatigue 88
-    [89] = { func = AbsorbSkill, attacker = false, target = true },        -- absorbSkill 89
-    [90] = { func = PositiveModifier, attacker = false, target = true },    -- resistFire 90
-    [91] = { func = PositiveModifier, attacker = false, target = true },   -- resistFrost 91
-    [92] = { func = PositiveModifier, attacker = false, target = true },   -- resistShock 92
-    [93] = { func = PositiveModifier, attacker = true, target = true }, -- resistMagicka 93
+    [88] = nil,                                                                   -- absorbFatigue 88
+    [89] = { func = AbsorbSkill, attacker = false, target = true },               -- absorbSkill 89
+    [90] = { func = PositiveModifier, attacker = false, target = true },          -- resistFire 90
+    [91] = { func = PositiveModifier, attacker = false, target = true },          -- resistFrost 91
+    [92] = { func = PositiveModifier, attacker = false, target = true },          -- resistShock 92
+    [93] = { func = PositiveModifier, attacker = true, target = true },           -- resistMagicka 93
     -- resistCommonDisease 94
     -- resistBlightDisease 95
     -- resistCorprusDisease 96
-    [97] = { func = PositiveModifier, attacker = false, target = true },        -- resistPoison 97
+    [97] = { func = PositiveModifier, attacker = false, target = true }, -- resistPoison 97
     [98] = { func = PositiveModifier, attacker = false, target = true }, -- resistNormalWeapons 98
     -- resistParalysis 99
     -- removeCurse 100
@@ -516,19 +616,39 @@ local resolver = {
     -- sEffectSummonCreature05 142
 }
 
+---@param self DPS
 function DPS.Initialize(self)
     ---@diagnostic disable: need-check-nil
-    
+    -- TODO @cast if possible
+    ---@diagnostic disable: assign-type-mismatch
+    self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value
+    self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value
+    self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value
+    self.fSwingBlockBase = tes3.findGMST(tes3.gmst.fSwingBlockBase).value
+    self.fSwingBlockMult = tes3.findGMST(tes3.gmst.fSwingBlockMult).value
+    self.fBlockStillBonus = 1.25 -- tes3.findGMST(tes3.gmst.fBlockStillBonus).value -- hardcoded, OpenMW uses gmst
+    self.iBlockMinChance = tes3.findGMST(tes3.gmst.iBlockMinChance).value
+    self.iBlockMaxChance = tes3.findGMST(tes3.gmst.iBlockMaxChance).value
+    self.fCombatArmorMinMult = tes3.findGMST(tes3.gmst.fCombatArmorMinMult).value
+    self.fDifficultyMult = tes3.findGMST(tes3.gmst.fDifficultyMult).value
+
     -- resolve MCP or mod
-    self.strengthBase = 0.5
-    self.strengthMultiply = 0.01
+    self.fDamageStrengthBase = 0.5
+    self.fDamageStrengthMult = 0.01
     -- This MCP feature causes the game to use these GMSTs in its weapon damage calculations instead of the hardcoded
     -- values used by the vanilla game. With default values for the GMSTs the outcome is the same.
     if tes3.hasCodePatchFeature(tes3.codePatchFeature.gameFormulaRestoration) then
         -- maybe require restart when to get initialing
         logger:info("MCP: GameFormulaRestoration")
-        self.strengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value
-        self.strengthMultiply = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value
+        self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value
+        self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value
+    end
+
+    -- sign
+    self.blindFix = -1
+    if tes3.hasCodePatchFeature(tes3.codePatchFeature.blindFix) then
+        logger:info("MCP: BlindFix")
+        self.blindFix = 1
     end
 
     self.rangedWeaponCanCastOnSTrike = false
@@ -547,17 +667,30 @@ function DPS.Initialize(self)
         self.throwWeaponAlreadyModified = true
     end
 
-    -- todo poison crafting
+    -- TODO compatible Poison Crafting
+    self.poisonCrafting = false
+    if tes3.isLuaModActive("poisonCrafting") then
+        logger:info("MWSE: Poison Crafting")
+        self.poisonCrafting = true
+    end
 end
 
+---@param self DPS
+---@param weapon tes3weapon
+---@return boolean
 function DPS.CanCastOnStrike(self, weapon)
     return self.rangedWeaponCanCastOnSTrike or weapon.isRanged == false
 end
 
-function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnStrike)
+---@param enchantment tes3enchantment
+---@param weaponSpeed number
+---@param cabCastOnStrike boolean
+---@return ScratchData
+---@return { [tes3.effect]: string[] }
+function CollectEnchantmentEffect(enchantment, weaponSpeed, cabCastOnStrike)
     local data = CreateScratchData()
 
-    local icons = {}
+    local icons = {} ---@type {[tes3.effect]: string[]}
 
     if enchantment then
         -- todo not yet on cast
@@ -579,11 +712,11 @@ function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnS
                             speed = weaponSpeed,
                             isSelf = isSelf,
                             attacker = resolver.attacker,
-                            target = resolver.target,            
+                            target = resolver.target,
                             attribute = effect.attribute,
-                            skill = effect.skill,        
+                            skill = effect.skill,
                             constant = constant,
-                            equiped = false,              -- TODO for constant
+                            equiped = false, -- TODO for constant
                         })
                         if affect and id ~= nil then
                             -- adding own key, then merge on resolve phase
@@ -601,53 +734,110 @@ function DPS.CollectEnchantmentEffect(self, enchantment, weaponSpeed, cabCastOnS
     return data, icons
 end
 
+---@param weaponDamage number
+---@param strengthModifier number
+---@param conditionModifier number
+---@param criticalHitModifier number
+---@param armorReduction number
+---@return number
 local function CalculateAcculateWeaponDamage(weaponDamage, strengthModifier, conditionModifier, criticalHitModifier,
                                              armorReduction)
     return (weaponDamage * strengthModifier * conditionModifier * criticalHitModifier) / armorReduction
 end
 
+---@param hitRate number
+---@param evation number
+---@return number
 local function CalculateChanceToHit(hitRate, evation)
     return math.clamp(hitRate - evation, 0.0, 1.0)
 end
 
--- gmst exists?
+-- TODO gmst fCombatArmorMinMult
+---@param armorRationg number
+---@param damage number
+---@return number
 local function CalculateDamageReductionFromArmor(armorRationg, damage)
     return math.min(1 + armorRationg / damage, 4.0)
 end
 
--- gmst exists?
 -- TODO MCP blid patch
-local function CalculateHitRate(weaponSkill, agility, luck, currentFatigue, maximumFatigue, fortifyAttackMagnitude,
-                                blindMagnitude)
-    return (weaponSkill + (agility / 5) + (luck / 10)) * (0.75 + 0.5 * currentFatigue / maximumFatigue) +
-        fortifyAttackMagnitude + blindMagnitude
+---comment
+---@param weaponSkill number
+---@param agility number
+---@param luck number
+---@param fatigueTerm number
+---@param fortifyAttack number
+---@param blind number
+---@return number
+local function CalculateHitRate(weaponSkill, agility, luck, fatigueTerm, fortifyAttack, blind)
+    return (weaponSkill + (agility * 0.2) + (luck * 0.1)) * fatigueTerm + fortifyAttack + blind
 end
 
--- gmst exists?
-local function CalculateEvasion(agility, luck, currentFatigue, currentFatigue, maximumFatigue, sanctuaryMagnitude)
-    return ((agility / 5.0) + (luck / 10.0)) * (0.75 + 0.5 * currentFatigue / maximumFatigue) + sanctuaryMagnitude
+---@param agility number
+---@param luck number
+---@param fatigueTerm number
+---@param sanctuary number
+---@return number
+local function CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
+    return ((agility * 0.2) + (luck * 0.1)) * fatigueTerm + math.min(sanctuary, 100)
+end
+
+---@param self DPS
+---@param agility number
+---@param luck number
+---@param fatigueTerm number
+---@param sanctuary number
+---@param chameleon number
+---@param invisibility boolean
+---@param isKnockedDown boolean
+---@param isParalyzed boolean
+---@param unware boolean
+---@return number
+function DPS.CalculateEvasion(self, agility, luck, fatigueTerm, sanctuary, chameleon, invisibility, isKnockedDown,
+                              isParalyzed, unware)
+    local evasion = 0
+    if not (isKnockedDown or isParalyzed or unware) then
+        evasion = CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
+    end
+    evasion = evasion + math.min(self.fCombatInvisoMult * chameleon, 100)
+    evasion = evasion + math.min(self.fCombatInvisoMult * (invisibility and 1 or 0), 100)
+    return evasion
 end
 
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
+---@param weapon tes3weapon
+---@param itemData tes3itemData
+---@return number
 local function GetConditionModifier(weapon, itemData)
     -- Projectiles (thrown weapons, arrows, bolts) have no condition data.
     local hasDurability = weapon.hasDurability
-    local maximumCondition = (hasDurability and weapon.maxCondition) or 1
+    local maximumCondition = (hasDurability and weapon.maxCondition) or 1.0
     local currentCondition = (hasDurability and itemData and itemData.condition) or maximumCondition
     return currentCondition / maximumCondition
 end
 
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
-function DPS.GetStrengthModifier(self, strengthModifier)
-     -- how capped value without mcp patch?
-     local currentStrength = math.max(tes3.mobilePlayer.strength.current + strengthModifier, 0)
+---@param self DPS
+---@param strength number
+---@return number
+function DPS.GetStrengthModifier(self, strength)
+    -- how capped value without mcp patch?
+    local currentStrength = math.max(strength, 0)
     -- resolved base and mult on initialize
-    return self.strengthBase + (self.strengthMultiply * currentStrength)
+    return self.fDamageStrengthBase + (self.fDamageStrengthMult * currentStrength)
 end
 
+---@class DamageRange
+---@field min number
+---@field max number
+
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
+---@param self DPS
+---@param weapon tes3weapon
+---@param marksman boolean
+---@return DamageRange[]
 function DPS.GetWeaponBaseDamage(self, weapon, marksman)
-    local baseDamage = {}
+    local baseDamage = {} ---@type DamageRange[]
     if marksman then
         baseDamage[tes3.physicalAttackType.projectile] = { min = weapon.chopMin, max = weapon.chopMax }
     else
@@ -666,15 +856,31 @@ function DPS.GetWeaponBaseDamage(self, weapon, marksman)
     return baseDamage
 end
 
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strengthModifier, marksman, accurateDamage)
+---@param self DPS
+---@param currentFatigue number
+---@param baseFatigue number
+---@return number
+function DPS.GetFatigueTerm(self, currentFatigue, baseFatigue)
+    return math.max(self.fFatigueBase - self.fFatigueMult * math.max(1.0 - currentFatigue / baseFatigue, 0.0), 0.0)
+end
+
+---@param self DPS
+---@param weapon tes3weapon
+---@param itemData tes3itemData
+---@param speed number
+---@param strength number
+---@param marksman boolean
+---@param accurateDamage boolean
+---@return DamageRange[]
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman, accurateDamage)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
     local damageMultCond = 0
     if accurateDamage then
-        damageMultStr = self:GetStrengthModifier(strengthModifier)
+        damageMultStr = self:GetStrengthModifier(strength)
         damageMultCond = GetConditionModifier(weapon, itemData)
     end
-    local minSpeed = speed -- TODO should be quickly, how?
+    local minSpeed = speed -- TODO should be quickly, it seems depends animation frame
     local maxSpeed = speed
     for i, v in pairs(baseDamage) do
         if accurateDamage then
@@ -687,11 +893,15 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strengthModifi
     return baseDamage
 end
 
-
-local function ResolveWeaponDPS(weaponDamages, effect)
+---@param weaponDamages DamageRange[]
+---@param effect ScratchData
+---@param minmaxRange boolean
+---@return DamageRange
+---@return boolean[]
+local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange)
     -- highest damages flags
     -- TODO when useBestAttack pick highest average damage
-    local range = { min = 0, max = 0 }
+    local range = { min = 0, max = 0 } ---@type DamageRange
     local highestType = {}
     local typeDamages = {}
     local highest = 0
@@ -699,7 +909,7 @@ local function ResolveWeaponDPS(weaponDamages, effect)
         range.min = math.max(range.min, v.min)
         range.max = math.max(range.max, v.max)
         local typeDamage = v.max
-        if config.minmaxRange then
+        if minmaxRange then
             typeDamage = (v.max + v.min) * 0.5 -- use average when display min - max damage range
         end
         highest = math.max(highest, typeDamage)
@@ -714,7 +924,10 @@ local function ResolveWeaponDPS(weaponDamages, effect)
     return range, highestType
 end
 
--- TODO test
+---@param effect ScratchData
+---@param icons { [tes3.effect]: string[] }
+---@return number
+---@return {[tes3.effect]: number}
 local function ResolveEffectDPS(effect, icons)
     local effectDamages = {}
     local effectTotal = 0
@@ -728,7 +941,9 @@ local function ResolveEffectDPS(effect, icons)
     return effectTotal, effectDamages
 end
 
--- TODO test
+---@param effect ScratchData
+---@param icons { [tes3.effect]: string[] }
+---@param resistMagicka number
 local function ResolveModifiers(effect, icons, resistMagicka)
     effect.target.resists = {}
     effect.attacker.resists = {}
@@ -739,7 +954,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     -- so if both apply, above works?
     local targetResistMagicka = InverseNormalizeMagnitude(GetValue(effect.target.positives, rm, 0))
     targetResistMagicka = InverseNormalizeMagnitude(GetValue(effect.target.negatives, wm, 0)) * targetResistMagicka
-    local attackerResistMagicka = InverseNormalizeMagnitude(GetValue(effect.attacker.positives, rm, 0) + resistMagicka )
+    local attackerResistMagicka = InverseNormalizeMagnitude(GetValue(effect.attacker.positives, rm, 0) + resistMagicka)
     attackerResistMagicka = InverseNormalizeMagnitude(GetValue(effect.attacker.negatives, wm, 0)) * attackerResistMagicka
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
@@ -757,17 +972,18 @@ local function ResolveModifiers(effect, icons, resistMagicka)
 
     -- probability
     -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
-    local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) * GetValue( effect.target.positives, tes3.effect.reflect, 1.0)
+    local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
+        GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
     local dispelChance = InverseNormalizeMagnitude(GetValue(effect.target.positives, tes3.effect.dispel, 0))
-    
+
     -- merge resist/weakness elemental and shield
     local resistweakness = {
-        [tes3.effect.resistFire]          = {tes3.effect.weaknesstoFire, tes3.effect.fireShield},
-        [tes3.effect.resistFrost]         = {tes3.effect.weaknesstoFrost, tes3.effect.frostShield},
-        [tes3.effect.resistShock]         = {tes3.effect.weaknesstoShock, tes3.effect.lightningShield},
+        [tes3.effect.resistFire]          = { tes3.effect.weaknesstoFire, tes3.effect.fireShield },
+        [tes3.effect.resistFrost]         = { tes3.effect.weaknesstoFrost, tes3.effect.frostShield },
+        [tes3.effect.resistShock]         = { tes3.effect.weaknesstoShock, tes3.effect.lightningShield },
         -- [tes3.effect.resistMagicka]       = {tes3.effect.weaknesstoMagicka}, -- pre calculated
-        [tes3.effect.resistPoison]        = {tes3.effect.weaknesstoPoison},
-        [tes3.effect.resistNormalWeapons] = {tes3.effect.weaknesstoNormalWeapons},
+        [tes3.effect.resistPoison]        = { tes3.effect.weaknesstoPoison },
+        [tes3.effect.resistNormalWeapons] = { tes3.effect.weaknesstoNormalWeapons },
     }
     for k, v in pairs(resistweakness) do
         local resist = GetValue(effect.target.positives, k, 0)
@@ -808,15 +1024,15 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         [tes3.effect.absorbHealth] = tes3.effect.resistMagicka,
         [tes3.effect.damageHealth] = tes3.effect.resistMagicka,
         [tes3.effect.drainHealth] = tes3.effect.resistMagicka, -- temporary down
-        [tes3.effect.sunDamage] = nil, -- only vampire
+        [tes3.effect.sunDamage] = nil,                         -- only vampire
     }
 
-    
+
     for k, v in pairs(pair) do
         if v then
             local damage = GetValue(e.damages, k, 0) * GetValue(e.resists, v, 1.0)
             e.damages[k] = damage
-            
+
             -- merge icons if different between k and v
             if k ~= v and icons[v] then
                 if not icons[k] then
@@ -830,6 +1046,9 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     end
 end
 
+---@param e Target
+---@param a tes3.attribute
+---@return number
 local function GetAttributeModifier(e, a)
     local v = 0
     if e.fortifyAttributes[a] then
@@ -847,6 +1066,9 @@ local function GetAttributeModifier(e, a)
     return v
 end
 
+---@param e Target
+---@param s tes3.skill
+---@return number
 local function GetSkillModifier(e, s)
     local v = 0
     if e.fortifySkills[s] then
@@ -864,23 +1086,53 @@ local function GetSkillModifier(e, s)
     return v
 end
 
+local function CalculateHitRate_(weapon, effect)
+    local skillId = weapon.skillId
+    local weaponSkill = math.max(tes3.mobilePlayer:getSkillValue(skillId) + GetSkillModifier(effect.attacker, skillId), 0)
+    local agility = math.max(
+        tes3.mobilePlayer.agility.current + GetAttributeModifier(effect.attacker, tes3.attribute.agility), 0)
+    local luck = math.max(tes3.mobilePlayer.luck.current + GetAttributeModifier(effect.attacker, tes3.attribute.luck), 0)
+    -- return CalculateHitRate(weaponSkill, agility, luck, 0, 1, 0, 0)
+end
+
+local function CalculateEvasion_(weapon, effect)
+end
+
+local function CalculateHit(weapon, effect)
+    --return CalculateChanceToHit(hitRate, evasion)
+end
+
+
+---@class DPSData
+---@field weaponDamageRange table 
+---@field weaponDamages table
+---@field highestType { [tes3.physicalAttackType]: boolean }
+---@field effectTotal number
+---@field effectDamages table
+---@field icons { [tes3.effect]: string[] }
 
 -- I'm not sure how to resolve Morrowind's effect strictly.
 -- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
 -- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
+---@param self DPS
+---@param weapon tes3weapon
+---@param itemData tes3itemData
+---@return DPSData
 function DPS.CalculateDPS(self, weapon, itemData)
+    -- TODO activeMagicEffectList
     local useBestAttack = tes3.worldController.useBestAttack -- TODO
-    local marksman = weapon.isMelee == false
+    local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed
     if marksman then
         speed = 1 -- TODO it seems ranged weapon always return 1, but here uses actual speed.
     end
-    local effect, icons = self:CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
+    local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
     local resistMagicka = tes3.mobilePlayer.resistMagicka
     ResolveModifiers(effect, icons, resistMagicka)
-    local str = GetAttributeModifier(effect.attacker, tes3.attribute.strength)
-    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, str, marksman, config.accurateDamage)
-    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect)
+    local strength = tes3.mobilePlayer.strength.current + GetAttributeModifier(effect.attacker, tes3.attribute.strength)
+    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman,
+    self.config.accurateDamage)
+    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
 
     return {
@@ -890,10 +1142,12 @@ function DPS.CalculateDPS(self, weapon, itemData)
         effectTotal = effectTotal,
         effectDamages = effectDamages,
         icons = icons,
-    }
+    } 
 end
 
--- for local function test
+-- unittest
+---@param self DPS
+---@param unitwind UnitWind
 function DPS.RunTest(self, unitwind)
     ---@diagnostic disable: need-check-nil
     unitwind:test("Empty", function()
@@ -947,7 +1201,7 @@ function DPS.RunTest(self, unitwind)
             isSelf = false,
             attacker = r.attacker,
             target = r.target,
-    }
+        }
         local affect = r.func(params)
         unitwind:expect(affect).toBe(true)
         unitwind:expect(data.target.damages[params.key]).toBe(10)
@@ -969,7 +1223,7 @@ function DPS.RunTest(self, unitwind)
             isSelf = false,
             attacker = r.attacker,
             target = r.target,
-    }
+        }
         local affect = r.func(params)
         unitwind:expect(affect).toBe(true)
         unitwind:expect(data.target.positives[params.key]).toBe(1)
@@ -1033,7 +1287,7 @@ function DPS.RunTest(self, unitwind)
             isSelf = false,
             attacker = r.attacker,
             target = r.target,
-    }
+        }
         local affect = r.func(params)
         unitwind:expect(affect).toBe(true)
         unitwind:expect(data.target.positives[params.key]).toBe(20)
@@ -1135,8 +1389,7 @@ function DPS.RunTest(self, unitwind)
             unitwind:expect(data.target.positives[params.key]).toBe(10)
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(true)
-            unitwind:expect(data.target.damages[params.key]).toBe(2)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 
