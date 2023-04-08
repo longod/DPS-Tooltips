@@ -3,16 +3,17 @@ local this = {}
 ---@class Config
 this.defaultConfig = {
     enable = true,
+    minmaxRange = true,
     accurateDamage = true,
+    maxDurability = true,
     breakdown = true,
-    minmaxRange = false,
-    -- maxDurability = false,
     -- always or pressed key
     -- hitRate = false,
     -- armor = false,
     -- blocking = false,
     -- difficulty = false,
-    -- showIcon = True,
+    coloring = true,
+    showIcon = true,
     logLevel = "INFO",
 }
 this.config = nil ---@type Config

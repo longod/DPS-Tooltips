@@ -874,14 +874,17 @@ end
 ---@param strength number
 ---@param marksman boolean
 ---@param accurateDamage boolean
+---@param maxDurability boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman, accurateDamage)
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman, accurateDamage, maxDurability)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
-    local damageMultCond = 0
+    local damageMultCond = 1.0
     if accurateDamage then
         damageMultStr = self:GetStrengthModifier(strength)
-        damageMultCond = GetConditionModifier(weapon, itemData)
+        if not maxDurability then
+            damageMultCond = GetConditionModifier(weapon, itemData)
+        end
     end
     local minSpeed = speed -- TODO should be quickly, it seems depends animation frame
     local maxSpeed = speed
@@ -1151,7 +1154,7 @@ function DPS.CalculateDPS(self, weapon, itemData)
     ResolveModifiers(effect, icons, resistMagicka)
     local strength = tes3.mobilePlayer.strength.current + GetAttributeModifier(effect.attacker, tes3.attribute.strength)
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman,
-    self.config.accurateDamage)
+    self.config.accurateDamage, self.config.maxDurability)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
 

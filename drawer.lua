@@ -83,7 +83,6 @@ function Drawer.Initialize(self)
         [tes3.effect.restoreHealth] = { gmst = tes3.gmst.sEffectRestoreHealth, name = nil, },
         [tes3.effect.fortifyHealth] = { gmst = tes3.gmst.sEffectFortifyHealth, name = nil, },
     }
-    -- TODO coloring
     self.colors = {
         [tes3.effect.fireDamage] = { palette = tes3.palette.healthColor, color = {
             0.78431379795074, 0.23529413342476, 0.11764706671238,
@@ -97,12 +96,22 @@ function Drawer.Initialize(self)
         [tes3.effect.poison] = { palette = tes3.palette.fatigueColor, color = {
             0, 0.58823531866074, 0.23529413342476,
         }},
-        [tes3.effect.absorbHealth] = { palette = nil, color = nil },
-        [tes3.effect.damageHealth] = { palette = nil, color = nil },
-        [tes3.effect.drainHealth] = { palette = nil, color = nil },
-        [tes3.effect.sunDamage] = { palette = nil, color = nil },
-        [tes3.effect.restoreHealth] = { palette = nil, color = nil },
-        [tes3.effect.fortifyHealth] = { palette = nil, color = nil },
+        [tes3.effect.absorbHealth] = { palette = nil, color = {
+            247/255.0, 223/255.0, 255/255.0,
+        }},
+        [tes3.effect.damageHealth] = { palette = nil, color = {
+            198/255.0, 65/255.0, 57/255.0,
+        } },
+        [tes3.effect.drainHealth] = { palette = nil, color = {
+            198/255.0, 65/255.0, 57/255.0,
+        } },
+        [tes3.effect.sunDamage] = { palette = tes3.palette.bigAnswerPressedColor, color = nil },
+        [tes3.effect.restoreHealth] = { palette = nil, color = {
+            165/255.0, 178/255.0, 231/255.0,
+        }},
+        [tes3.effect.fortifyHealth] = { palette = nil, color = {
+            165/255.0, 178/255.0, 231/255.0,
+        }},
     }
 
     for _, v in pairs(self.weaponNames) do
@@ -139,29 +148,21 @@ end
 
 ---@param element tes3uiElement
 ---@param id number
----@param color number[]?
 ---@return tes3uiElement
-local function CreateBlock(element, id, color)
+local function CreateBlock(element, id)
     local block = element:createBlock { id = id }
     block.autoWidth = true
     block.autoHeight = true
-    if color then
-        block.color = color
-    end
     return block
 end
 
 ---@param element tes3uiElement
 ---@param id number
 ---@param text string
----@param color number[]?
 ---@return tes3uiElement
-local function CreateLabel(element, id, text, color)
+local function CreateLabel(element, id, text)
     local label = element:createLabel { text = text, id = id }
     label.wrapText = true
-    if color then
-        label.color = color
-    end
     return label
 end
 
@@ -179,7 +180,7 @@ end
 ---@param id integer
 ---@param effect tes3.effect
 function Drawer.DisplayIcons(self, element, data, id, effect)
-    if data.icons[effect] then
+    if self.config.showIcon and data.icons[effect] then
         for _, path in ipairs(data.icons[effect]) do
             local icon = element:createImage({
                 id = id,
@@ -235,7 +236,7 @@ function Drawer.DisplayWeaponDPS(self, element, data)
                 text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
             end
             local label = CreateLabel(block, self.idWeaponLabel, text)
-            if not data.highestType[k] and self.weakColor then
+            if self.config.coloring and not data.highestType[k] and self.weakColor then
                 label.color = self.weakColor
             end
         end
@@ -271,7 +272,7 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
             -- label
             local label = CreateLabel(block, self.idEffectLabel, string.format("%s: %.1f", self.effectNames[k].name, v))
             local col = self.colors[k]
-            if col and col.color then
+            if self.config.coloring and col and col.color then
                 label.color = col.color
             end
         end

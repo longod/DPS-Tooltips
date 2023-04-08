@@ -9,6 +9,8 @@ function this.OnModConfigReady()
     template:saveOnClose(config.configPath, data)
     template:register()
 
+    -- TODO descriptions
+
     local page = template:createSideBarPage{
         label = "Settings",
         description = (
@@ -24,14 +26,7 @@ function this.OnModConfigReady()
             table = data,
         }
     }
-    page:createOnOffButton{
-        label = "Use accurate damage",
-        description = "Use accurate damage considering strength and weapon condition to DPS.",
-        variable = mwse.mcm.createTableVariable{
-            id = "accurateDamage",
-            table = data,
-        }
-    }
+
     page:createOnOffButton{
         label = "Display Min - Max",
         description = "",
@@ -40,14 +35,54 @@ function this.OnModConfigReady()
             table = data,
         }
     }
-    page:createOnOffButton{
-        label = "Display a breakdown of DPS",
-        description = "Display a breakdown of DPS",
-        variable = mwse.mcm.createTableVariable{
-            id = "breakdown",
-            table = data,
+
+    do
+        local sub = page:createCategory("Accurate DPS")
+        sub:createOnOffButton{
+            label = "Use accurate damage",
+            description = "Use accurate damage considering strength and weapon condition to DPS.",
+            variable = mwse.mcm.createTableVariable{
+                id = "accurateDamage",
+                table = data,
+            }
         }
-    }
+        sub:createOnOffButton{
+            label = "Use best weapon condition",
+            description = "",
+            variable = mwse.mcm.createTableVariable{
+                id = "maxDurability",
+                table = data,
+            }
+        }
+    end
+
+    do
+        local sub = page:createCategory("Breakdown Appearance")
+        sub:createOnOffButton{
+            label = "Display a breakdown of DPS",
+            description = "Display a breakdown of DPS",
+            variable = mwse.mcm.createTableVariable{
+                id = "breakdown",
+                table = data,
+            }
+        }
+        sub:createOnOffButton{
+            label = "Coloring text",
+            description = "",
+            variable = mwse.mcm.createTableVariable{
+                id = "coloring",
+                table = data,
+            }
+        }
+        sub:createOnOffButton{
+            label = "Show Effect Icons",
+            description = "",
+            variable = mwse.mcm.createTableVariable{
+                id = "showIcon",
+                table = data,
+            }
+        }
+    end
     page:createDropdown{
         label = "Logging Level",
         description = "Set the log level.",
