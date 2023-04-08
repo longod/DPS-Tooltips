@@ -6,6 +6,7 @@ this.defaultConfig = {
     accurateDamage = true,
     breakdown = true,
     minmaxRange = false,
+    -- maxDurability = false,
     -- always or pressed key
     -- hitRate = false,
     -- armor = false,

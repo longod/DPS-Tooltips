@@ -42,6 +42,7 @@ local logger = require("longod.DPSTooltips.logger")
 ---@field fortifySkills {[tes3.skill] : number}
 ---@field restoreAttributes {[tes3.attribute] : number}
 ---@field restoreSkills {[tes3.skill] : number}
+---@field resists {[tes3.effect] : number} resolved resistance
 
 ---@class ScratchData
 ---@field attacker Target
@@ -947,15 +948,24 @@ end
 local function ResolveEffectDPS(effect, icons)
     local effectDamages = {}
     local effectTotal = 0
+
+    -- damage
     for k, v in pairs(effect.target.damages) do
         effectDamages[k] = v
         effectTotal = effectTotal + v
     end
-    effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.restoreHealth, 0)
-    effectTotal = effectTotal - GetValue(effect.target.positives, tes3.effect.fortifyHealth, 0) -- temporary
-    -- TODO add positive icons, where is destination?
-    -- MergeIcons(icons, k, tes3.effect.restoreHealth)
-    -- MergeIcons(icons, k, tes3.effect.fortifyHealth)
+
+    -- healing
+    local healing = {
+        tes3.effect.restoreHealth,
+        tes3.effect.fortifyHealth,
+    }
+    for _, v in ipairs(healing) do
+        local h  = GetValue(effect.target.positives, v, 0)
+        effectDamages[v] = -h -- display value is negative
+        effectTotal = effectTotal - h
+    end
+
     return effectTotal, effectDamages
 end
 
@@ -1118,7 +1128,7 @@ end
 ---@field weaponDamages table
 ---@field highestType { [tes3.physicalAttackType]: boolean }
 ---@field effectTotal number
----@field effectDamages table
+---@field effectDamages { [tes3.effect]: number }
 ---@field icons { [tes3.effect]: string[] }
 
 -- I'm not sure how to resolve Morrowind's effect strictly.
@@ -1129,7 +1139,7 @@ end
 ---@param itemData tes3itemData
 ---@return DPSData
 function DPS.CalculateDPS(self, weapon, itemData)
-    -- TODO activeMagicEffectList
+    -- TODO activeMagicEffectList constantt effect applied
     local useBestAttack = tes3.worldController.useBestAttack -- TODO mock
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed

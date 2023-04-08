@@ -80,7 +80,10 @@ function Drawer.Initialize(self)
         [tes3.effect.damageHealth] = { gmst = tes3.gmst.sEffectDamageHealth, name = nil, },
         [tes3.effect.drainHealth] = { gmst = tes3.gmst.sEffectDrainHealth, name = nil, },
         [tes3.effect.sunDamage] = { gmst = tes3.gmst.sEffectSunDamage, name = nil, },
+        [tes3.effect.restoreHealth] = { gmst = tes3.gmst.sEffectRestoreHealth, name = nil, },
+        [tes3.effect.fortifyHealth] = { gmst = tes3.gmst.sEffectFortifyHealth, name = nil, },
     }
+    -- TODO coloring
     self.colors = {
         [tes3.effect.fireDamage] = { palette = tes3.palette.healthColor, color = {
             0.78431379795074, 0.23529413342476, 0.11764706671238,
@@ -98,6 +101,8 @@ function Drawer.Initialize(self)
         [tes3.effect.damageHealth] = { palette = nil, color = nil },
         [tes3.effect.drainHealth] = { palette = nil, color = nil },
         [tes3.effect.sunDamage] = { palette = nil, color = nil },
+        [tes3.effect.restoreHealth] = { palette = nil, color = nil },
+        [tes3.effect.fortifyHealth] = { palette = nil, color = nil },
     }
 
     for _, v in pairs(self.weaponNames) do
@@ -171,6 +176,24 @@ end
 ---@param self Drawer
 ---@param element tes3uiElement
 ---@param data DPSData
+---@param id integer
+---@param effect tes3.effect
+function Drawer.DisplayIcons(self, element, data, id, effect)
+    if data.icons[effect] then
+        for _, path in ipairs(data.icons[effect]) do
+            local icon = element:createImage({
+                id = id,
+                path = string.format("icons\\%s", path)
+            })
+            icon.borderTop = 1
+            icon.borderRight = 6
+        end
+    end
+end
+
+---@param self Drawer
+---@param element tes3uiElement
+---@param data DPSData
 function Drawer.DisplayDPS(self, element, data)
     local text = nil
     -- need localize?
@@ -201,17 +224,8 @@ function Drawer.DisplayWeaponDPS(self, element, data)
             local block = CreateBlock(element, self.idWeaponBlock)
             block.borderAllSides = 1
 
-            -- icons if exists
-            if data.icons[k] then
-                for _, path in ipairs(data.icons[k]) do
-                    local icon = block:createImage({
-                        id = self.idWeaponIcon,
-                        path = string.format("icons\\%s", path)
-                    })
-                    icon.borderTop = 1
-                    icon.borderRight = 6
-                end
-            end
+            -- icons
+            self:DisplayIcons(block, data, self.idWeaponIcon, k)
 
             -- label
             local text = nil
@@ -241,25 +255,18 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
         tes3.effect.damageHealth,
         tes3.effect.drainHealth,
         tes3.effect.sunDamage,
+        tes3.effect.restoreHealth,
+        tes3.effect.fortifyHealth,
     }
 
     for _, k in ipairs(effectOrder) do
         local v = data.effectDamages[k]
-        if v and v > 0 then
+        if v and v ~= 0 then
             local block = CreateBlock(element, self.idEffectBlock)
             block.borderAllSides = 1
 
             -- icons
-            if data.icons[k] then
-                for _, path in ipairs(data.icons[k]) do
-                    local icon = block:createImage({
-                        id = self.idEffectIcon,
-                        path = string.format("icons\\%s", path)
-                    })
-                    icon.borderTop = 1
-                    icon.borderRight = 6
-                end
-            end
+            self:DisplayIcons(block, data, self.idEffectIcon, k)
 
             -- label
             local label = CreateLabel(block, self.idEffectLabel, string.format("%s: %.1f", self.effectNames[k].name, v))
@@ -303,6 +310,7 @@ function Drawer.Display(self, element, data)
 
         self:DisplayWeaponDPS(frame, data)
         self:DisplayEnchantmentDPS(frame, data)
+        -- TODO display non damage effect if need
     end
 
     -- element:createDivider()
