@@ -42,16 +42,16 @@ Anyone who knows more about this would be grateful for advice.
 ## By Design, Currently:
 - Damage or Healing Over Time effects only use the first applied effect. Because this mod does not calculate total damage numerically.
 - Some effects that take effect after hit are treated as if they hit and the effect is still in effect.
-- Effects with temporary increases and decreases, such as Fortify and Drain, do not contribute to continuous, but are included as is.
+- Some effects with temporary increases and decreases, such as Fortify and Drain, do not contribute to continuous, but are included as is.
 
 ## Not Supported:
 - On Use Enchantment 
 - OpenMW (Sorry!)
 
 ## Known Issues:
-- Constant Effects are double applied if equiped.
 - Minimum swing speed probably not correct.
 - Ranged Weapons attack speed probably not correct.
+- Some effect that need to cap by current stats, such as Restore, but are not.
 
 ## Thanks:
 - [MWSE](https://github.com/MWSE/MWSE)

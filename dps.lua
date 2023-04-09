@@ -30,7 +30,7 @@ end
 
 local logger = require("longod.DPSTooltips.logger")
 
----@class Target
+---@class Modifier
 ---@field damages {[tes3.effect] : number}
 ---@field positives {[tes3.effect] : number}
 ---@field negatives {[tes3.effect] : number}
@@ -45,8 +45,9 @@ local logger = require("longod.DPSTooltips.logger")
 ---@field resists {[tes3.effect] : number} resolved resistance
 
 ---@class ScratchData
----@field attacker Target
----@field target Target
+---@field attacker Modifier
+---@field target Modifier
+---@field current Modifier
 
 ---@class Params
 ---@field data table
@@ -476,9 +477,9 @@ local resolver = {
     -- swiftSwim 1
     -- waterWalking 2
     [3] = { func = PositiveModifier, attacker = false, target = true }, -- shield 3
-    [4] = { func = PositiveModifier, attacker = false, target = true },    -- fireShield 4
-    [5] = { func = PositiveModifier, attacker = false, target = true },    -- lightningShield 5
-    [6] = { func = PositiveModifier, attacker = false, target = true },    -- frostShield 6
+    [4] = { func = PositiveModifier, attacker = false, target = true }, -- fireShield 4
+    [5] = { func = PositiveModifier, attacker = false, target = true }, -- lightningShield 5
+    [6] = { func = PositiveModifier, attacker = false, target = true }, -- frostShield 6
     -- burden 7
     -- feather 8
     -- jump 9
@@ -685,12 +686,35 @@ function DPS.CanCastOnStrike(self, weapon)
     return self.rangedWeaponCanCastOnSTrike or weapon.isRanged == false
 end
 
+-- combination effect id, attribute, skill
+---@param effect tes3.effect
+---@param attribute tes3.attribute?
+---@param skill tes3.skill?
+---@return integer
+local function GenerateKey(effect, attribute, skill)
+    local b = require("bit")
+    local key = 0
+    if effect ~= nil and effect >= 0 then
+        key = effect
+        logger:debug(string.format("%d",effect))
+    end
+    if attribute and attribute >=0 then
+        key = b.bor(b.lshift(attribute, 16), key)
+        logger:debug(string.format("%d",attribute))
+    end
+    if skill and skill >= 0 then
+        key = b.bor(b.lshift(skill, 16 + 4), key)
+        logger:debug(string.format("%d",skill))
+    end
+    return key
+end
+
 ---@param enchantment tes3enchantment
 ---@param weaponSpeed number
----@param cabCastOnStrike boolean
+---@param canCastOnStrike boolean
 ---@return ScratchData
 ---@return { [tes3.effect]: string[] }
-function CollectEnchantmentEffect(enchantment, weaponSpeed, cabCastOnStrike)
+local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrike)
     local data = CreateScratchData()
 
     local icons = {} ---@type {[tes3.effect]: string[]}
@@ -698,28 +722,26 @@ function CollectEnchantmentEffect(enchantment, weaponSpeed, cabCastOnStrike)
     if enchantment then
         -- todo not yet on cast
         -- todo on strike effect consider charge cost
-        local onStrike = cabCastOnStrike and enchantment.castType == tes3.enchantmentType.onStrike
+        local onStrike = canCastOnStrike and enchantment.castType == tes3.enchantmentType.onStrike
         local constant = enchantment.castType == tes3.enchantmentType.constant
         if onStrike or constant then
             for _, effect in ipairs(enchantment.effects) do
                 if effect ~= nil and effect.id >= 0 then
                     local id = effect.id
-                    local resolver = resolver[id]
-                    if resolver then
+                    local r = resolver[id]
+                    if r then
                         local value = (effect.max + effect.min) * 0.5 -- uniform RNG average
                         local isSelf = effect.rangeType == tes3.effectRange.self
-                        local affect = resolver.func({
+                        local affect = r.func({
                             data = data,
                             key = id,
                             value = value,
                             speed = weaponSpeed,
                             isSelf = isSelf,
-                            attacker = resolver.attacker,
-                            target = resolver.target,
-                            attribute = effect.attribute,
-                            skill = effect.skill,
-                            constant = constant,
-                            equiped = false, -- TODO for constant
+                            attacker = r.attacker,
+                            target = r.target,
+                            attribute = effect.attribute, -- if invalid it returns -1. not nil.
+                            skill = effect.skill, -- if invalid it returns -1. not nil.
                         })
                         if affect and id ~= nil then
                             -- adding own key, then merge on resolve phase
@@ -873,23 +895,21 @@ end
 ---@param speed number
 ---@param strength number
 ---@param marksman boolean
----@param accurateDamage boolean
----@param maxDurability boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman, accurateDamage, maxDurability)
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
     local damageMultCond = 1.0
-    if accurateDamage then
+    if self.config.accurateDamage then
         damageMultStr = self:GetStrengthModifier(strength)
-        if not maxDurability then
+        if not self.config.maxDurability then
             damageMultCond = GetConditionModifier(weapon, itemData)
         end
     end
-    local minSpeed = speed -- TODO should be quickly, it seems depends animation frame
+    local minSpeed = speed -- TODO maybe quickly, it seems depends animation frame
     local maxSpeed = speed
     for i, v in pairs(baseDamage) do
-        if accurateDamage then
+        if self.config.accurateDamage then
             v.min = CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1, 1);
             v.max = CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1, 1);
         end
@@ -902,9 +922,10 @@ end
 ---@param weaponDamages { [tes3.physicalAttackType]: DamageRange }
 ---@param effect ScratchData
 ---@param minmaxRange boolean
+---@param useBestAttack boolean
 ---@return DamageRange
 ---@return { [tes3.physicalAttackType] :boolean }
-local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange)
+local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange, useBestAttack)
     -- highest damages flags
     -- TODO when useBestAttack pick highest average damage
     local range = { min = 0, max = 0 } ---@type DamageRange
@@ -915,8 +936,8 @@ local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange)
         range.min = math.max(range.min, v.min)
         range.max = math.max(range.max, v.max)
         local typeDamage = v.max
-        if minmaxRange then
-            typeDamage = (v.max + v.min) * 0.5 -- use average when display min - max damage range
+        if minmaxRange or useBestAttack then
+            typeDamage = (v.max + v.min) -- average
         end
         highest = math.max(highest, typeDamage)
         typeDamages[k] = typeDamage
@@ -964,9 +985,9 @@ local function ResolveEffectDPS(effect, icons)
         tes3.effect.fortifyHealth,
     }
     for _, v in ipairs(healing) do
-        local h  = GetValue(effect.target.positives, v, 0)
+        local h          = GetValue(effect.target.positives, v, 0)
         effectDamages[v] = -h -- display value is negative
-        effectTotal = effectTotal - h
+        effectTotal      = effectTotal - h
     end
 
     return effectTotal, effectDamages
@@ -1069,7 +1090,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     end
 end
 
----@param e Target
+---@param e Modifier
 ---@param a tes3.attribute
 ---@return number
 local function GetAttributeModifier(e, a)
@@ -1089,7 +1110,7 @@ local function GetAttributeModifier(e, a)
     return v
 end
 
----@param e Target
+---@param e Modifier
 ---@param s tes3.skill
 ---@return number
 local function GetSkillModifier(e, s)
@@ -1127,7 +1148,7 @@ end
 
 
 ---@class DPSData
----@field weaponDamageRange table 
+---@field weaponDamageRange table
 ---@field weaponDamages table
 ---@field highestType { [tes3.physicalAttackType]: boolean }
 ---@field effectTotal number
@@ -1140,23 +1161,59 @@ end
 ---@param self DPS
 ---@param weapon tes3weapon
 ---@param itemData tes3itemData
+---@param useBestAttack boolean
 ---@return DPSData
-function DPS.CalculateDPS(self, weapon, itemData)
-    -- TODO activeMagicEffectList constantt effect applied
-    local useBestAttack = tes3.worldController.useBestAttack -- TODO mock
+function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed
     if marksman then
         speed = 1 -- TODO it seems ranged weapon always return 1, but here uses actual speed.
     end
+
     local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
-    local resistMagicka = tes3.mobilePlayer.resistMagicka
+    local resistMagicka = tes3.mobilePlayer.resistMagicka -- TODO this resist magicka should ignore applied effect from this weapon
     ResolveModifiers(effect, icons, resistMagicka)
+
+    -- experimental: counter applied active magic effect
+    -- TODO before resolve for resistMagicka
+    -- split writing destination, values shoud not resist, they are resisted already.
+    if weapon.enchantment then
+        local onStrike = self:CanCastOnStrike(weapon) and weapon.enchantment.castType == tes3.enchantmentType.onStrike
+        local constant = weapon.enchantment.castType == tes3.enchantmentType.constant
+        if onStrike or constant then -- no on use
+            for _, a in ipairs(tes3.mobilePlayer.activeMagicEffectList) do
+                if a.instance.sourceType == tes3.magicSourceType.enchantment and
+                a.instance.item and a.instance.item.objectType == tes3.objectType.weapon then
+                    -- only tooltip weapon, possible enemy attacked using same weapon.
+                    if a.instance.item.id == weapon.id and a.instance.magicID == weapon.enchantment.id and a.effectId >= 0 then
+                        logger:debug(weapon.id .. " " .. weapon.enchantment.id)
+                        local id = a.effectId
+                        local r = resolver[id]
+                        if r then
+                            -- use original function, but reusing almost case is ok
+                            r.func({
+                                data = effect,
+                                key = id,
+                                value = -a.effectInstance.effectiveMagnitude, -- counter resisted value
+                                speed = 1.0,
+                                isSelf = true,
+                                attacker = r.attacker,
+                                target = r.target,
+                                attribute = a.attributeId,
+                                skill = a.skillId,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     local strength = tes3.mobilePlayer.strength.current + GetAttributeModifier(effect.attacker, tes3.attribute.strength)
-    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman,
-    self.config.accurateDamage, self.config.maxDurability)
-    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange)
+    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman)
+    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange, useBestAttack)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
+
 
     return {
         weaponDamageRange = weaponDamageRange,
@@ -1165,7 +1222,7 @@ function DPS.CalculateDPS(self, weapon, itemData)
         effectTotal = effectTotal,
         effectDamages = effectDamages,
         icons = icons,
-    } 
+    }
 end
 
 -- unittest

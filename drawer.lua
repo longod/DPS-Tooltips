@@ -1,4 +1,4 @@
----@class GMSTName 
+---@class GMSTName
 ---@field gmst number
 ---@field name string?
 
@@ -86,32 +86,32 @@ function Drawer.Initialize(self)
     self.colors = {
         [tes3.effect.fireDamage] = { palette = tes3.palette.healthColor, color = {
             0.78431379795074, 0.23529413342476, 0.11764706671238,
-        }},
+        } },
         [tes3.effect.frostDamage] = { palette = tes3.palette.miscColor, color = {
             0, 0.80392163991928, 0.80392163991928,
-        }},
+        } },
         [tes3.effect.shockDamage] = { palette = tes3.palette.linkColor, color = {
             0.43921571969986, 0.49411767721176, 0.8117647767067,
-        }},
+        } },
         [tes3.effect.poison] = { palette = tes3.palette.fatigueColor, color = {
             0, 0.58823531866074, 0.23529413342476,
-        }},
+        } },
         [tes3.effect.absorbHealth] = { palette = nil, color = {
-            247/255.0, 223/255.0, 255/255.0,
-        }},
+            247 / 255.0, 223 / 255.0, 255 / 255.0,
+        } },
         [tes3.effect.damageHealth] = { palette = nil, color = {
-            198/255.0, 65/255.0, 57/255.0,
+            198 / 255.0, 65 / 255.0, 57 / 255.0,
         } },
         [tes3.effect.drainHealth] = { palette = nil, color = {
-            198/255.0, 65/255.0, 57/255.0,
+            198 / 255.0, 65 / 255.0, 57 / 255.0,
         } },
         [tes3.effect.sunDamage] = { palette = tes3.palette.bigAnswerPressedColor, color = nil },
         [tes3.effect.restoreHealth] = { palette = nil, color = {
-            165/255.0, 178/255.0, 231/255.0,
-        }},
+            165 / 255.0, 178 / 255.0, 231 / 255.0,
+        } },
         [tes3.effect.fortifyHealth] = { palette = nil, color = {
-            165/255.0, 178/255.0, 231/255.0,
-        }},
+            165 / 255.0, 178 / 255.0, 231 / 255.0,
+        } },
     }
 
     for _, v in pairs(self.weaponNames) do
@@ -211,7 +211,8 @@ end
 ---@param self Drawer
 ---@param element tes3uiElement
 ---@param data DPSData
-function Drawer.DisplayWeaponDPS(self, element, data)
+---@param useBestAttack boolean
+function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
     local weaponOrder = {
         tes3.physicalAttackType.slash,
         tes3.physicalAttackType.thrust,
@@ -222,22 +223,27 @@ function Drawer.DisplayWeaponDPS(self, element, data)
     for _, k in ipairs(weaponOrder) do
         local v = data.weaponDamages[k]
         if v then
-            local block = CreateBlock(element, self.idWeaponBlock)
-            block.borderAllSides = 1
+            if (not useBestAttack) or data.highestType[k] then
+                local block = CreateBlock(element, self.idWeaponBlock)
+                block.borderAllSides = 1
 
-            -- icons
-            self:DisplayIcons(block, data, self.idWeaponIcon, k)
+                -- icons
+                self:DisplayIcons(block, data, self.idWeaponIcon, k)
 
-            -- label
-            local text = nil
-            if self.config.minmaxRange then
-                text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
-            else
-                text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
-            end
-            local label = CreateLabel(block, self.idWeaponLabel, text)
-            if self.config.coloring and not data.highestType[k] and self.weakColor then
-                label.color = self.weakColor
+                -- label
+                local text = nil
+                if self.config.minmaxRange then
+                    text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
+                else
+                    text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
+                end
+                local label = CreateLabel(block, self.idWeaponLabel, text)
+                if self.config.coloring and not data.highestType[k] and self.weakColor then
+                    label.color = self.weakColor
+                end
+                if useBestAttack then
+                    break -- order slash, thrust then chop is much actual picking by engine if same value
+                end
             end
         end
     end
@@ -282,7 +288,8 @@ end
 ---@param self Drawer
 ---@param element tes3uiElement
 ---@param data DPSData
-function Drawer.Display(self, element, data)
+---@param useBestAttack boolean
+function Drawer.Display(self, element, data, useBestAttack)
     if not data then
         return
     end
@@ -309,7 +316,7 @@ function Drawer.Display(self, element, data)
         frame.paddingLeft = 6
         frame.paddingRight = 6
 
-        self:DisplayWeaponDPS(frame, data)
+        self:DisplayWeaponDPS(frame, data, useBestAttack)
         self:DisplayEnchantmentDPS(frame, data)
         -- TODO display non damage effect if need
     end
