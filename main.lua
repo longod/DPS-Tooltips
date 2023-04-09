@@ -36,4 +36,4 @@ end
 
 event.register(tes3.event.initialized, OnInitialized)
 
-event.register(tes3.event.modConfigReady, require("longod.DPSTooltips.mcm"))
+event.register(tes3.event.modConfigReady, require("longod.DPSTooltips.mcm").OnModConfigReady)

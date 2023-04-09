@@ -641,7 +641,7 @@ function DPS.Initialize(self)
     -- values used by the vanilla game. With default values for the GMSTs the outcome is the same.
     if tes3.hasCodePatchFeature(tes3.codePatchFeature.gameFormulaRestoration) then
         -- maybe require restart when to get initialing
-        logger:info("MCP: GameFormulaRestoration")
+        logger:info("Enabled MCP GameFormulaRestoration")
         self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value
         self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value
     end
@@ -649,7 +649,7 @@ function DPS.Initialize(self)
     -- sign
     self.blindFix = -1
     if tes3.hasCodePatchFeature(tes3.codePatchFeature.blindFix) then
-        logger:info("MCP: BlindFix")
+        logger:info("Enabled MCP BlindFix")
         self.blindFix = 1
     end
 
@@ -658,7 +658,7 @@ function DPS.Initialize(self)
     if tes3.isModActive("Cast on Strike Bows.esp") then
         -- this MCP fix seems, deny on strile option when enchaning, exsisting ranged weapons on strike dont require this fix to torigger.
         -- ~tes3.hasCodePatchFeature(tes3.codePatchFeature.fixEnchantOptionsOnRanged)
-        logger:info("ESP: Cast on Strike Bows")
+        logger:info("Enabled Cast on Strike Bows")
         self.rangedWeaponCanCastOnSTrike = true
     end
 
@@ -667,14 +667,14 @@ function DPS.Initialize(self)
     -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
     self.throwWeaponAlreadyModified = false
     if tes3.isLuaModActive("DQ.ThroProjRev") then
-        logger:info("MWSE: Thrown Projectiles Revamped")
+        logger:info("Enabled Thrown Projectiles Revamped")
         self.throwWeaponAlreadyModified = true
     end
 
     -- TODO compatible Poison Crafting
     self.poisonCrafting = false
     if tes3.isLuaModActive("poisonCrafting") then
-        logger:info("MWSE: Poison Crafting")
+        -- logger:info("Enabled Poison Crafting")
         self.poisonCrafting = true
     end
 end
@@ -926,8 +926,6 @@ end
 ---@return DamageRange
 ---@return { [tes3.physicalAttackType] :boolean }
 local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange, useBestAttack)
-    -- highest damages flags
-    -- TODO when useBestAttack pick highest average damage
     local range = { min = 0, max = 0 } ---@type DamageRange
     local highestType = {}
     local typeDamages = {}
@@ -1091,60 +1089,67 @@ local function ResolveModifiers(effect, icons, resistMagicka)
 end
 
 ---@param e Modifier
----@param a tes3.attribute
+---@param t tes3.attribute
+---@param attributes tes3statistic[]
 ---@return number
-local function GetAttributeModifier(e, a)
-    local v = 0
-    if e.fortifyAttributes[a] then
-        v = v + e.fortifyAttributes[a]
+local function GetModifiedAttribute(e, t, attributes)
+    local v = attributes[t + 1].current
+    if e.damageAttributes[t] then
+        v = v - e.damageAttributes[t]
     end
-    if e.restoreAttributes[a] then
-        v = v + e.restoreAttributes[a] -- TODO limit current value
+    if e.drainAttributes[t] then
+        v = v - e.drainAttributes[t] -- at once
     end
-    if e.damageAttributes[a] then
-        v = v - e.damageAttributes[a]
+    if e.fortifyAttributes[t] then
+        v = v + e.fortifyAttributes[t]
     end
-    if e.drainAttributes[a] then
-        v = v - e.drainAttributes[a] -- at once
+    if e.restoreAttributes[t] then
+        v = v + e.restoreAttributes[t] -- TODO limit current value
     end
     return v
 end
 
 ---@param e Modifier
----@param s tes3.skill
+---@param t tes3.skill
+---@param skills tes3statisticSkill[]
 ---@return number
-local function GetSkillModifier(e, s)
-    local v = 0
-    if e.fortifySkills[s] then
-        v = v + e.fortifySkills[s]
+local function GetModifiedSkill(e, t, skills)
+    local v = skills[t + 1].current
+    if e.damageSkills[t] then
+        v = v - e.damageSkills[t]
     end
-    if e.restoreSkills[s] then
-        v = v + e.restoreSkills[s] -- TODO limit current value
+    if e.drainSkills[t] then
+        v = v - e.drainSkills[t] -- at once
     end
-    if e.damageSkills[s] then
-        v = v - e.damageSkills[s]
+    if e.fortifySkills[t] then
+        v = v + e.fortifySkills[t]
     end
-    if e.drainSkills[s] then
-        v = v - e.drainSkills[s] -- at once
+    if e.restoreSkills[t] then
+        v = v + e.restoreSkills[t] -- TODO limit current value
     end
     return v
 end
 
-local function CalculateHitRate_(weapon, effect)
-    local skillId = weapon.skillId
-    local weaponSkill = math.max(tes3.mobilePlayer:getSkillValue(skillId) + GetSkillModifier(effect.attacker, skillId), 0)
-    local agility = math.max(
-        tes3.mobilePlayer.agility.current + GetAttributeModifier(effect.attacker, tes3.attribute.agility), 0)
-    local luck = math.max(tes3.mobilePlayer.luck.current + GetAttributeModifier(effect.attacker, tes3.attribute.luck), 0)
-    -- return CalculateHitRate(weaponSkill, agility, luck, 0, 1, 0, 0)
-end
+-- local function GetModifiedCurrentFatigue(e, t, fatigue)
+-- end
+-- local function GetModifiedMaxFatigue(e, t, fatigue)
+-- end
 
-local function CalculateEvasion_(weapon, effect)
-end
+-- local function CalculateHitRate_(weapon, effect)
+--     local skillId = weapon.skillId
+--     local weaponSkill = math.max(tes3.mobilePlayer:getSkillValue(skillId) + GetModifiedSkill(effect.attacker, skillId), 0)
+--     local agility = math.max(
+--         tes3.mobilePlayer.agility.current + GetModifiedAttribute(effect.attacker, tes3.attribute.agility), 0)
+--     local luck = math.max(tes3.mobilePlayer.luck.current + GetModifiedAttribute(effect.attacker, tes3.attribute.luck), 0)
+--     -- return CalculateHitRate(weaponSkill, agility, luck, 0, 1, 0, 0)
+-- end
 
-local function CalculateHit(weapon, effect)
-    --return CalculateChanceToHit(hitRate, evasion)
-end
+-- local function CalculateEvasion_(weapon, effect)
+-- end
+
+-- local function CalculateHit(weapon, effect)
+--     --return CalculateChanceToHit(hitRate, evasion)
+-- end
 
 
 ---@class DPSData
@@ -1158,6 +1163,7 @@ end
 -- I'm not sure how to resolve Morrowind's effect strictly.
 -- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
 -- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
+-- And Why do I not use tes3.getEffectMagnitude() or other useful functions? That's because it works for players, but cannot be used against a notional, nonexistent enemy.
 ---@param self DPS
 ---@param weapon tes3weapon
 ---@param itemData tes3itemData
@@ -1209,7 +1215,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         end
     end
 
-    local strength = tes3.mobilePlayer.strength.current + GetAttributeModifier(effect.attacker, tes3.attribute.strength)
+    local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes)
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange, useBestAttack)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)

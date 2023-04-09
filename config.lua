@@ -4,8 +4,11 @@ local this = {}
 this.defaultConfig = {
     enable = true,
     minmaxRange = true,
+    preDivider = false,
+    postDivider = false,
     accurateDamage = true,
     maxDurability = true,
+    -- maxFatigue = true,
     breakdown = true,
     -- always or pressed key
     -- hitRate = false,

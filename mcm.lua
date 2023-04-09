@@ -29,9 +29,27 @@ function this.OnModConfigReady()
 
     page:createOnOffButton{
         label = "Display Min - Max",
-        description = "",
+        description = "\n\nDefault: On",
         variable = mwse.mcm.createTableVariable{
             id = "minmaxRange",
+            table = data,
+        }
+    }
+
+    page:createOnOffButton{
+        label = "Insert Pre-Divider",
+        description = "\n\nDefault: Off",
+        variable = mwse.mcm.createTableVariable{
+            id = "preDivider",
+            table = data,
+        }
+    }
+
+    page:createOnOffButton{
+        label = "Insert Post-Divider",
+        description = "\n\nDefault: Off",
+        variable = mwse.mcm.createTableVariable{
+            id = "postDivider",
             table = data,
         }
     }
@@ -40,7 +58,7 @@ function this.OnModConfigReady()
         local sub = page:createCategory("Accurate DPS")
         sub:createOnOffButton{
             label = "Use accurate damage",
-            description = "Use accurate damage considering strength and weapon condition to DPS.",
+            description = "Use accurate damage considering strength and weapon condition to DPS.\n\nDefault: On",
             variable = mwse.mcm.createTableVariable{
                 id = "accurateDamage",
                 table = data,
@@ -60,7 +78,7 @@ function this.OnModConfigReady()
         local sub = page:createCategory("Breakdown Appearance")
         sub:createOnOffButton{
             label = "Display a breakdown of DPS",
-            description = "Display a breakdown of DPS",
+            description = "Display a breakdown of DPS\n\nDefault: On",
             variable = mwse.mcm.createTableVariable{
                 id = "breakdown",
                 table = data,
@@ -68,7 +86,7 @@ function this.OnModConfigReady()
         }
         sub:createOnOffButton{
             label = "Coloring text",
-            description = "",
+            description = "\n\nDefault: On",
             variable = mwse.mcm.createTableVariable{
                 id = "coloring",
                 table = data,
@@ -76,7 +94,7 @@ function this.OnModConfigReady()
         }
         sub:createOnOffButton{
             label = "Show Effect Icons",
-            description = "",
+            description = "\n\nDefault: On",
             variable = mwse.mcm.createTableVariable{
                 id = "showIcon",
                 table = data,
@@ -85,7 +103,7 @@ function this.OnModConfigReady()
     end
     page:createDropdown{
         label = "Logging Level",
-        description = "Set the log level.",
+        description = "Set the log level.\n\nDefault: INFO",
         options = {
             { label = "TRACE", value = "TRACE"},
             { label = "DEBUG", value = "DEBUG"},
@@ -103,5 +121,5 @@ function this.OnModConfigReady()
     }
 end
 
-return this.OnModConfigReady
+return this
 

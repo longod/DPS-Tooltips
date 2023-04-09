@@ -27,6 +27,8 @@
 ---@field idEffectBlock number
 ---@field idEffectIcon number
 ---@field idEffectLabel number
+---@field idPreDivider number
+---@field idPostDivider number
 local Drawer = {}
 
 ---@param cfg Config?
@@ -144,6 +146,8 @@ function Drawer.Initialize(self)
     self.idEffectBlock = tes3ui.registerID("DPSTooltips_EffectBlock")
     self.idEffectIcon = tes3ui.registerID("DPSTooltips_EffectIcon")
     self.idEffectLabel = tes3ui.registerID("DPSTooltips_EffectLabel")
+    self.idPreDivider = tes3ui.registerID("DPSTooltips_PreDivider")
+    self.idPostDivider = tes3ui.registerID("DPSTooltips_PostDivider")
 end
 
 ---@param element tes3uiElement
@@ -299,7 +303,11 @@ function Drawer.Display(self, element, data, useBestAttack)
     if not element then
         return
     end
-    -- element:createDivider()
+    
+    if self.config.preDivider then
+        local divider = element:createDivider({id = self.idPreDivider})
+        divider.widthProportional = 0.85
+    end
 
     self:DisplayDPS(element, data)
 
@@ -321,7 +329,10 @@ function Drawer.Display(self, element, data, useBestAttack)
         -- TODO display non damage effect if need
     end
 
-    -- element:createDivider()
+    if self.config.postDivider then
+        local divider = element:createDivider({id = self.idPostDivider})
+        divider.widthProportional = 0.85
+    end
 
     element:updateLayout()
 end
