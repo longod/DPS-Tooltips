@@ -16,7 +16,7 @@ Anyone who knows more about this would be grateful for advice.
 ./Data Files/MWSE/mods/longod/DPSTooltips
 
 ## Compatibility:
-- [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) Features
+- [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) features
   - Game Formula Restoration
 - [Cast on Strike Bows](https://www.nexusmods.com/morrowind/mods/45913)
 - [Thrown Projectiles Revamped](https://www.nexusmods.com/morrowind/mods/49609)
@@ -33,9 +33,9 @@ Anyone who knows more about this would be grateful for advice.
 - Skill effects
 - Resist or Weakness to Normal Weapons
 - Chance to Hit, Evasion and Blocking
-- Modded Magic Effects
-- [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) Features
-  - Blind Fix
+- Difficulty
+- Modded magic effects
+- Other [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) features
 - [Poison Crafting](https://www.nexusmods.com/morrowind/mods/45729)
 
 ## By Design, Currently:

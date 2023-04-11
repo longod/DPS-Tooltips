@@ -12,7 +12,8 @@
 ---@field fDifficultyMult number
 ---@field fDamageStrengthBase number
 ---@field fDamageStrengthMult number
----@field blindFix number
+---@field restoreDrainAttributesFix boolean
+---@field blindFix integer
 ---@field rangedWeaponCanCastOnSTrike boolean
 ---@field throwWeaponAlreadyModified boolean
 ---@field poisonCrafting boolean
@@ -59,6 +60,7 @@ local logger = require("longod.DPSTooltips.logger")
 ---@field target boolean
 ---@field attribute tes3.attribute
 ---@field skill tes3.skill
+---@field weaponSkillId tes3.skill
 
 ---@return ScratchData
 local function CreateScratchData()
@@ -93,49 +95,53 @@ local function CreateScratchData()
     return data
 end
 
--- TODO modifieable for mod
--- todo name {target, attacker}
+---@class FilterFlag
+---@field attacker boolean
+---@field target boolean
+
+---@class AttributeFilter
+---@field [tes3.attribute] FilterFlag
 local attributeFilter = {
-    [tes3.attribute.strength] = { false, true }, -- damage
-    [tes3.attribute.intelligence] = { false, false },
-    [tes3.attribute.willpower] = { true, true }, -- fatigue
-    [tes3.attribute.agility] = { true, true },   -- evade, hit, fatigue
-    [tes3.attribute.speed] = { false, false },   -- TODO weapon swing mod
-    [tes3.attribute.endurance] = { true, true }, -- TODO realtime health calculate mod, fatigue
-    [tes3.attribute.personality] = { false, false },
-    [tes3.attribute.luck] = { true, true },      -- evade, hit
+    [tes3.attribute.strength] = { attacker = true, target = false }, -- damage
+    [tes3.attribute.intelligence] = { attacker = false, target = false },
+    [tes3.attribute.willpower] = { attacker = true, target = true }, -- fatigue
+    [tes3.attribute.agility] = { attacker = true, target = true },   -- evade, hit, fatigue
+    [tes3.attribute.speed] = { attacker = false, target = false },   -- if weapon swing mod
+    [tes3.attribute.endurance] = { attacker = true, target = true }, -- fatigue or if realtime health calculate mod
+    [tes3.attribute.personality] = { attacker = false, target = false },
+    [tes3.attribute.luck] = { attacker = true, target = true },      -- evade, hit
 }
 
--- TODO should be combine current equipments
--- {target, attacker}
+---@class SkillFilter
+---@field [tes3.skill] FilterFlag
 local skillFilter = {
-    [tes3.skill.block] = { true, false },
-    [tes3.skill.armorer] = { false, false },
-    [tes3.skill.mediumArmor] = { true, false },
-    [tes3.skill.heavyArmor] = { true, false },
-    [tes3.skill.bluntWeapon] = { false, true },
-    [tes3.skill.longBlade] = { false, true },
-    [tes3.skill.axe] = { false, true },
-    [tes3.skill.spear] = { false, true },
-    [tes3.skill.athletics] = { false, false },
-    [tes3.skill.enchant] = { false, false },
-    [tes3.skill.destruction] = { false, false },
-    [tes3.skill.alteration] = { false, false },
-    [tes3.skill.illusion] = { false, false },
-    [tes3.skill.conjuration] = { false, false },
-    [tes3.skill.mysticism] = { false, false },
-    [tes3.skill.restoration] = { false, false },
-    [tes3.skill.alchemy] = { false, false },
-    [tes3.skill.unarmored] = { false, false },
-    [tes3.skill.security] = { false, false },
-    [tes3.skill.sneak] = { false, false },
-    [tes3.skill.acrobatics] = { false, false },
-    [tes3.skill.lightArmor] = { true, false },
-    [tes3.skill.shortBlade] = { false, true },
-    [tes3.skill.marksman] = { false, true },
-    [tes3.skill.mercantile] = { false, false },
-    [tes3.skill.speechcraft] = { false, false },
-    [tes3.skill.handToHand] = { false, false },
+    [tes3.skill.block] = { attacker =false, target = true  },
+    [tes3.skill.armorer] = { attacker = false, target = false },
+    [tes3.skill.mediumArmor] = { attacker =false, target = true },
+    [tes3.skill.heavyArmor] = { attacker =false, target = true },
+    [tes3.skill.bluntWeapon] = { attacker = true, target = false },
+    [tes3.skill.longBlade] = { attacker = true, target = false },
+    [tes3.skill.axe] = { attacker = true, target = false },
+    [tes3.skill.spear] = { attacker = true, target = false },
+    [tes3.skill.athletics] = { attacker = false, target = false },
+    [tes3.skill.enchant] = { attacker = false, target = false },
+    [tes3.skill.destruction] = { attacker = false, target = false },
+    [tes3.skill.alteration] = { attacker = false, target = false },
+    [tes3.skill.illusion] = { attacker = false, target = false },
+    [tes3.skill.conjuration] = { attacker = false, target = false },
+    [tes3.skill.mysticism] = { attacker = false, target = false },
+    [tes3.skill.restoration] = { attacker = false, target = false },
+    [tes3.skill.alchemy] = { attacker = false, target = false },
+    [tes3.skill.unarmored] = { attacker = false, target = false },
+    [tes3.skill.security] = { attacker = false, target = false },
+    [tes3.skill.sneak] = { attacker = false, target = false },
+    [tes3.skill.acrobatics] = { attacker = false, target = false },
+    [tes3.skill.lightArmor] = { attacker =false, target = true },
+    [tes3.skill.shortBlade] = { attacker = true, target = false },
+    [tes3.skill.marksman] = { attacker = true, target = false },
+    [tes3.skill.mercantile] = { attacker = false, target = false },
+    [tes3.skill.speechcraft] = { attacker = false, target = false },
+    [tes3.skill.handToHand] = { attacker = false, target = false },
 }
 
 ---@param params Params
@@ -145,13 +151,12 @@ local function IsAffectedAttribute(params)
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
         if params.isSelf then
-            return params.attacker and f[2]
+            return params.attacker and f.attacker
         else
-            return params.target and f[1]
+            return params.target and f.target
         end
-    else
-        return false
     end
+    return false
 end
 
 ---@param params Params
@@ -161,13 +166,12 @@ local function IsAffectedSkill(params)
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
         if params.isSelf then
-            return params.attacker and f[2]
+            return params.skill == params.weaponSkillId and params.attacker and f.attacker
         else
-            return params.target and f[1]
+            return params.target and f.target
         end
-    else
-        return false
     end
+    return false
 end
 
 ---@param tbl { [number]: number }
@@ -646,6 +650,12 @@ function DPS.Initialize(self)
         self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value
     end
 
+    self.restoreDrainAttributesFix = false
+    if tes3.hasCodePatchFeature(tes3.codePatchFeature.restoreDrainAttributesFix) then
+        logger:info("Enabled MCP RestoreDrainAttributesFix")
+        self.restoreDrainAttributesFix = true
+    end
+
     -- sign
     self.blindFix = -1
     if tes3.hasCodePatchFeature(tes3.codePatchFeature.blindFix) then
@@ -712,9 +722,10 @@ end
 ---@param enchantment tes3enchantment
 ---@param weaponSpeed number
 ---@param canCastOnStrike boolean
+---@param weaponSkillId tes3.skill
 ---@return ScratchData
 ---@return { [tes3.effect]: string[] }
-local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrike)
+local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrike, weaponSkillId)
     local data = CreateScratchData()
 
     local icons = {} ---@type {[tes3.effect]: string[]}
@@ -732,7 +743,8 @@ local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrik
                     if r then
                         local value = (effect.max + effect.min) * 0.5 -- uniform RNG average
                         local isSelf = effect.rangeType == tes3.effectRange.self
-                        local affect = r.func({
+                        ---@type Params
+                        local params = {
                             data = data,
                             key = id,
                             value = value,
@@ -742,7 +754,9 @@ local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrik
                             target = r.target,
                             attribute = effect.attribute, -- if invalid it returns -1. not nil.
                             skill = effect.skill,         -- if invalid it returns -1. not nil.
-                        })
+                            weaponSkillId = weaponSkillId,
+                        }
+                        local affect = r.func(params)
                         if affect and id ~= nil then
                             -- adding own key, then merge on resolve phase
                             if not icons[id] then
@@ -1097,20 +1111,30 @@ end
 ---@param attributes tes3statistic[]
 ---@return number
 local function GetModifiedAttribute(e, t, attributes)
-    local v = attributes[t + 1].current
+    local current = attributes[t + 1].current
     if e.damageAttributes[t] then
-        v = v - e.damageAttributes[t]
+        current = current - e.damageAttributes[t]
+    end
+
+    -- TODO mcp fix or unfix
+    -- if your Strength has been damaged 25 points, but you're wearing the Right Fist of Randagulf (+20 Fortify), Restore Strength would only give you back 5 points. To get around this, remove the Fortify effect (in the above example, remove the gauntlet) before invoking the Restore effect.
+    -- This bug is fixed by the Morrowind Code Patch.
+
+    -- Restore attributes spells did not recognise Fortify effects when restoring. Take for example, a base agility of 50, fortified by +30 to 80. If your agility was damaged below 80, a Restore spell would only restore up to 50 and stop working. Restore attributes spells now restore up to your fully fortified amount.
+    -- The same problem occurred when Drain attributes spells expired. These should now restore the fortified attribute properly as well.
+
+    if e.restoreAttributes[t] then -- can restore drained value?
+        local base = attributes[t + 1].base
+        local decreased = math.max(base - current, 0)
+        current = current + math.min(e.restoreAttributes[t], decreased)
     end
     if e.drainAttributes[t] then
-        v = v - e.drainAttributes[t] -- at once
+        current = current - e.drainAttributes[t] -- at once
     end
     if e.fortifyAttributes[t] then
-        v = v + e.fortifyAttributes[t]
+        current = current + e.fortifyAttributes[t]
     end
-    if e.restoreAttributes[t] then
-        v = v + e.restoreAttributes[t] -- TODO limit current value
-    end
-    return v
+    return current
 end
 
 ---@param e Modifier
@@ -1118,20 +1142,22 @@ end
 ---@param skills tes3statisticSkill[]
 ---@return number
 local function GetModifiedSkill(e, t, skills)
-    local v = skills[t + 1].current
+    local current = skills[t + 1].current
     if e.damageSkills[t] then
-        v = v - e.damageSkills[t]
+        current = current - e.damageSkills[t]
+    end
+    if e.restoreSkills[t] then -- can restore drained value?
+        local base = skills[t + 1].base
+        local decreased = math.max(base - current, 0)
+        current = current + math.min(e.restoreSkills[t], 0)
     end
     if e.drainSkills[t] then
-        v = v - e.drainSkills[t] -- at once
+        current = current - e.drainSkills[t] -- at once
     end
     if e.fortifySkills[t] then
-        v = v + e.fortifySkills[t]
+        current = current + e.fortifySkills[t]
     end
-    if e.restoreSkills[t] then
-        v = v + e.restoreSkills[t] -- TODO limit current value
-    end
-    return v
+    return current
 end
 
 ---@param effect ScratchData
@@ -1186,9 +1212,9 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         speed = 1 -- TODO it seems ranged weapon always return 1, but here uses actual speed.
     end
 
-    local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
-    local resistMagicka = tes3.mobilePlayer
-    .resistMagicka                                        -- TODO this resist magicka should ignore applied effect from this weapon
+    local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon), weapon.skillId)
+    -- TODO this resist magicka should ignore applied effect from this weapon
+    local resistMagicka = tes3.mobilePlayer.resistMagicka
     ResolveModifiers(effect, icons, resistMagicka)
 
     -- experimental: counter applied active magic effect
@@ -1207,8 +1233,8 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
                         local id = a.effectId
                         local r = resolver[id]
                         if r then
-                            -- use original function, but reusing almost case is ok
-                            r.func({
+                            ---@type Params
+                            local params = {
                                 data = effect,
                                 key = id,
                                 value = -a.effectInstance.effectiveMagnitude, -- counter resisted value
@@ -1218,7 +1244,10 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
                                 target = r.target,
                                 attribute = a.attributeId,
                                 skill = a.skillId,
-                            })
+                                weaponSkillId = weapon.skillId,
+                            }
+                            -- TODO use original function, but reusing almost case is ok
+                            r.func(params)
                         end
                     end
                 end
@@ -1269,6 +1298,7 @@ function DPS.RunTest(self, unitwind)
             local r = resolver[v]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = v,
@@ -1292,6 +1322,7 @@ function DPS.RunTest(self, unitwind)
         local r = resolver[v]
         unitwind:expect(r).NOT.toBe(nil)
         local data = CreateScratchData()
+        ---@type Params
         local params = {
             data = data,
             key = v,
@@ -1314,6 +1345,7 @@ function DPS.RunTest(self, unitwind)
         local r = resolver[v]
         unitwind:expect(r).NOT.toBe(nil)
         local data = CreateScratchData()
+        ---@type Params
         local params = {
             data = data,
             key = v,
@@ -1353,6 +1385,7 @@ function DPS.RunTest(self, unitwind)
             local r = resolver[k]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = v,
@@ -1381,6 +1414,7 @@ function DPS.RunTest(self, unitwind)
         local r = resolver[v]
         unitwind:expect(r).NOT.toBe(nil)
         local data = CreateScratchData()
+        ---@type Params
         local params = {
             data = data,
             key = v,
@@ -1413,6 +1447,7 @@ function DPS.RunTest(self, unitwind)
             local r = resolver[k]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = v,
@@ -1446,6 +1481,7 @@ function DPS.RunTest(self, unitwind)
             local r = resolver[v]
             unitwind:expect(r).NOT.toBe(nil)
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = v,
@@ -1473,6 +1509,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in pairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1484,13 +1521,13 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.fortifyAttributes[params.attribute]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.fortifyAttributes[params.attribute]).toBe(10)
             end
@@ -1504,6 +1541,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1515,13 +1553,13 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.damageAttributes[params.attribute]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.damageAttributes[params.attribute]).toBe(20)
             end
@@ -1535,6 +1573,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1546,13 +1585,13 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.drainAttributes[params.attribute]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.drainAttributes[params.attribute]).toBe(10)
             end
@@ -1566,6 +1605,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1577,11 +1617,11 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1] or v[2])
-            if v[1] then
+            unitwind:expect(affect).toBe(v.target or v.attacker)
+            if v.target then
                 unitwind:expect(data.target.drainAttributes[params.attribute]).toBe(10)
             end
-            if v[2] then
+            if v.attacker then
                 unitwind:expect(data.attacker.fortifyAttributes[params.attribute]).toBe(10)
             end
             params.isSelf = true
@@ -1597,6 +1637,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1608,13 +1649,13 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.restoreAttributes[params.attribute]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.restoreAttributes[params.attribute]).toBe(20)
             end
@@ -1628,6 +1669,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1637,18 +1679,22 @@ function DPS.RunTest(self, unitwind)
                 attacker = r.attacker,
                 target = r.target,
                 skill = k,
+                weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.fortifySkills[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.fortifySkills[params.skill]).toBe(10)
             end
+            params.weaponSkillId = tes3.skill.unarmored -- mismatch
+            affect = r.func(params)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 
@@ -1659,6 +1705,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1668,18 +1715,22 @@ function DPS.RunTest(self, unitwind)
                 attacker = r.attacker,
                 target = r.target,
                 skill = k,
+                weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.damageSkills[params.skill]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.damageSkills[params.skill]).toBe(20)
             end
+            params.weaponSkillId = tes3.skill.unarmored -- mismatch
+            affect = r.func(params)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 
@@ -1690,6 +1741,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1699,18 +1751,22 @@ function DPS.RunTest(self, unitwind)
                 attacker = r.attacker,
                 target = r.target,
                 skill = k,
+                weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.drainSkills[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.drainSkills[params.skill]).toBe(10)
             end
+            params.weaponSkillId = tes3.skill.unarmored -- mismatch
+            affect = r.func(params)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 
@@ -1721,6 +1777,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1730,18 +1787,22 @@ function DPS.RunTest(self, unitwind)
                 attacker = r.attacker,
                 target = r.target,
                 skill = k,
+                weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1] or v[2])
-            if v[1] then
+            unitwind:expect(affect).toBe(v.target or v.attacker)
+            if v.target then
                 unitwind:expect(data.target.drainSkills[params.skill]).toBe(10)
             end
-            if v[2] then
+            if v.attacker then
                 unitwind:expect(data.attacker.fortifySkills[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(false) -- self absorb is no affect
+            params.weaponSkillId = tes3.skill.unarmored -- mismatch
+            affect = r.func(params)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 
@@ -1752,6 +1813,7 @@ function DPS.RunTest(self, unitwind)
         for k, v in ipairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = CreateScratchData()
+            ---@type Params
             local params = {
                 data = data,
                 key = e,
@@ -1761,18 +1823,22 @@ function DPS.RunTest(self, unitwind)
                 attacker = r.attacker,
                 target = r.target,
                 skill = k,
+                weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v[1])
+            unitwind:expect(affect).toBe(v.target)
             if affect then
                 unitwind:expect(data.target.restoreSkills[params.skill]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(v[2])
+            unitwind:expect(affect).toBe(v.attacker)
             if affect then
                 unitwind:expect(data.attacker.restoreSkills[params.skill]).toBe(20)
             end
+            params.weaponSkillId = tes3.skill.unarmored -- mismatch
+            affect = r.func(params)
+            unitwind:expect(affect).toBe(false)
         end
     end)
 end
