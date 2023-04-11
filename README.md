@@ -1,6 +1,6 @@
 # DPS Tooltips
 
-This mod analytically calculates weapon DPS and displays it in the weapon tooltip.
+This mod analytically calculates weapon DPS and displays it in weapon tooltips.
 
 I wonder if a dagger with lots of enchantments is better for this player character or another two-handed sword with lots of enchantments.
 
@@ -21,7 +21,7 @@ Anyone who knows more about this would be grateful for advice.
 - [Cast on Strike Bows](https://www.nexusmods.com/morrowind/mods/45913)
 - [Thrown Projectiles Revamped](https://www.nexusmods.com/morrowind/mods/49609)
 - [MWSE Compare Tooltips](https://www.nexusmods.com/morrowind/mods/51087)
-- Other Tooltips Mods
+- Other item tooltip mods
   - It's not explicitly compatible, but it works fine.
   - [UI Expansion](https://www.nexusmods.com/morrowind/mods/46071)
   - [Accurate Tooltip Stats](https://www.nexusmods.com/morrowind/mods/51354)
@@ -29,7 +29,6 @@ Anyone who knows more about this would be grateful for advice.
   - [Tooltip](https://www.nexusmods.com/morrowind/mods/45969)
 
 ## TODO:
-- Use Best Attack option
 - Attribute effects
 - Skill effects
 - Resist or Weakness to Normal Weapons

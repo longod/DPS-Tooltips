@@ -232,7 +232,11 @@ function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
                 block.borderAllSides = 1
 
                 -- icons
-                self:DisplayIcons(block, data, self.idWeaponIcon, k)
+                -- Usually, all three types display the same icon. annoying.
+                -- TODO It would be better to consider the layout. display before or after for
+                -- FIXME there are duplicate id's between physicalAttackType and effect, it can either separate the table,
+                -- or fortunately it is not covered by the damage type, so can repackage it into a new one instead of using the icon table all over again.
+                --self:DisplayIcons(block, data, self.idWeaponIcon, k)
 
                 -- label
                 local text = nil
@@ -326,7 +330,7 @@ function Drawer.Display(self, element, data, useBestAttack)
 
         self:DisplayWeaponDPS(frame, data, useBestAttack)
         self:DisplayEnchantmentDPS(frame, data)
-        -- TODO display non damage effect if need
+        -- display non damage effect if need
     end
 
     if self.config.postDivider then

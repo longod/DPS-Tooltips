@@ -696,15 +696,15 @@ local function GenerateKey(effect, attribute, skill)
     local key = 0
     if effect ~= nil and effect >= 0 then
         key = effect
-        logger:debug(string.format("%d",effect))
+        logger:debug(string.format("%d", effect))
     end
-    if attribute and attribute >=0 then
+    if attribute and attribute >= 0 then
         key = b.bor(b.lshift(attribute, 16), key)
-        logger:debug(string.format("%d",attribute))
+        logger:debug(string.format("%d", attribute))
     end
     if skill and skill >= 0 then
         key = b.bor(b.lshift(skill, 16 + 4), key)
-        logger:debug(string.format("%d",skill))
+        logger:debug(string.format("%d", skill))
     end
     return key
 end
@@ -741,7 +741,7 @@ local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrik
                             attacker = r.attacker,
                             target = r.target,
                             attribute = effect.attribute, -- if invalid it returns -1. not nil.
-                            skill = effect.skill, -- if invalid it returns -1. not nil.
+                            skill = effect.skill,         -- if invalid it returns -1. not nil.
                         })
                         if affect and id ~= nil then
                             -- adding own key, then merge on resolve phase
@@ -763,11 +763,9 @@ end
 ---@param strengthModifier number
 ---@param conditionModifier number
 ---@param criticalHitModifier number
----@param armorReduction number
 ---@return number
-local function CalculateAcculateWeaponDamage(weaponDamage, strengthModifier, conditionModifier, criticalHitModifier,
-                                             armorReduction)
-    return (weaponDamage * strengthModifier * conditionModifier * criticalHitModifier) / armorReduction
+local function CalculateAcculateWeaponDamage(weaponDamage, strengthModifier, conditionModifier, criticalHitModifier)
+    return (weaponDamage * strengthModifier * conditionModifier * criticalHitModifier)
 end
 
 ---@param hitRate number
@@ -777,12 +775,12 @@ local function CalculateChanceToHit(hitRate, evation)
     return math.clamp(hitRate - evation, 0.0, 1.0)
 end
 
--- TODO gmst fCombatArmorMinMult
----@param armorRationg number
+---@param armorRating number
 ---@param damage number
+---@param armorMinMult number
 ---@return number
-local function CalculateDamageReductionFromArmor(armorRationg, damage)
-    return math.min(1 + armorRationg / damage, 4.0)
+local function CalculateDamageReductionFromArmorRating(damage, armorRating, armorMinMult)
+    return math.max(damage * math.max(damage / (damage + armorRating), armorMinMult), 1.0)
 end
 
 -- TODO MCP blid patch
@@ -894,9 +892,10 @@ end
 ---@param itemData tes3itemData
 ---@param speed number
 ---@param strength number
+---@param armorRating number
 ---@param marksman boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, marksman)
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, marksman)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
     local damageMultCond = 1.0
@@ -910,8 +909,14 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, mark
     local maxSpeed = speed
     for i, v in pairs(baseDamage) do
         if self.config.accurateDamage then
-            v.min = CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1, 1);
-            v.max = CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1, 1);
+            v.min = CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
+            v.max = CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
+
+            -- The reduction occurs only after all the multipliers are applied to the damage.
+            if armorRating > 0 then
+                v.min = CalculateDamageReductionFromArmorRating(v.min, armorRating, self.fCombatArmorMinMult)
+                v.max = CalculateDamageReductionFromArmorRating(v.max, armorRating, self.fCombatArmorMinMult)
+            end
         end
         v.min = CalculateDPS(v.min, minSpeed)
         v.max = CalculateDPS(v.max, maxSpeed)
@@ -926,27 +931,26 @@ end
 ---@return DamageRange
 ---@return { [tes3.physicalAttackType] :boolean }
 local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange, useBestAttack)
-    local range = { min = 0, max = 0 } ---@type DamageRange
+    local damageRange = { min = 0, max = 0 } ---@type DamageRange
     local highestType = {}
     local typeDamages = {}
     local highest = 0
     for k, v in pairs(weaponDamages) do
-        range.min = math.max(range.min, v.min)
-        range.max = math.max(range.max, v.max)
+        damageRange.min = math.max(damageRange.min, v.min)
+        damageRange.max = math.max(damageRange.max, v.max)
         local typeDamage = v.max
         if minmaxRange or useBestAttack then
             typeDamage = (v.max + v.min) -- average
         end
         highest = math.max(highest, typeDamage)
         typeDamages[k] = typeDamage
-        -- TODO apply armor shield modifier
     end
     for k, v in pairs(typeDamages) do
         if highest == v then -- lua can compare float equals?
             highestType[k] = true
         end
     end
-    return range, highestType
+    return damageRange, highestType
 end
 
 ---@param icons { [tes3.effect]: string[] }
@@ -1130,6 +1134,12 @@ local function GetModifiedSkill(e, t, skills)
     return v
 end
 
+---@param effect ScratchData
+local function GetTargetArmorRating(effect)
+    local shield = GetValue(effect.target.positives, tes3.effect.shield, 0);
+    return shield -- currently only shield effect
+end
+
 -- local function GetModifiedCurrentFatigue(e, t, fatigue)
 -- end
 -- local function GetModifiedMaxFatigue(e, t, fatigue)
@@ -1177,7 +1187,8 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     end
 
     local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon))
-    local resistMagicka = tes3.mobilePlayer.resistMagicka -- TODO this resist magicka should ignore applied effect from this weapon
+    local resistMagicka = tes3.mobilePlayer
+    .resistMagicka                                        -- TODO this resist magicka should ignore applied effect from this weapon
     ResolveModifiers(effect, icons, resistMagicka)
 
     -- experimental: counter applied active magic effect
@@ -1189,7 +1200,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         if onStrike or constant then -- no on use
             for _, a in ipairs(tes3.mobilePlayer.activeMagicEffectList) do
                 if a.instance.sourceType == tes3.magicSourceType.enchantment and
-                a.instance.item and a.instance.item.objectType == tes3.objectType.weapon then
+                    a.instance.item and a.instance.item.objectType == tes3.objectType.weapon then
                     -- only tooltip weapon, possible enemy attacked using same weapon.
                     if a.instance.item.id == weapon.id and a.instance.magicID == weapon.enchantment.id and a.effectId >= 0 then
                         logger:debug(weapon.id .. " " .. weapon.enchantment.id)
@@ -1215,11 +1226,13 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         end
     end
 
+    -- TODO icons
     local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes)
-    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, marksman)
+    local armorRating = GetTargetArmorRating(effect);
+
+    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, marksman)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange, useBestAttack)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
-
 
     return {
         weaponDamageRange = weaponDamageRange,
