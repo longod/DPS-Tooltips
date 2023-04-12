@@ -32,18 +32,26 @@ end
 local logger = require("longod.DPSTooltips.logger")
 local combat = require("longod.DPSTooltips.combat")
 
+---@class AttributeModifier
+---@field damage {[tes3.skill] : number},
+---@field drain {[tes3.skill] : number},
+---@field absorb {[tes3.skill] : number},
+---@field restore {[tes3.skill] : number},
+---@field fortify {[tes3.skill] : number},
+
+---@class SkillModifier
+---@field damage {[tes3.skill] : number},
+---@field drain {[tes3.skill] : number},
+---@field absorb {[tes3.skill] : number},
+---@field restore {[tes3.skill] : number},
+---@field fortify {[tes3.skill] : number},
+
 ---@class Modifier
 ---@field damages {[tes3.effect] : number}
 ---@field positives {[tes3.effect] : number}
 ---@field negatives {[tes3.effect] : number}
----@field damageAttributes {[tes3.attribute] : number}
----@field damageSkills {[tes3.skill] : number}
----@field drainAttributes {[tes3.attribute] : number}
----@field drainSkills {[tes3.skill] : number}
----@field fortifyAttributes {[tes3.attribute] : number}
----@field fortifySkills {[tes3.skill] : number}
----@field restoreAttributes {[tes3.attribute] : number}
----@field restoreSkills {[tes3.skill] : number}
+---@field attributes AttributeModifier
+---@field skills SkillModifier
 ---@field resists {[tes3.effect] : number} resolved resistance
 
 ---@class ScratchData
@@ -52,7 +60,7 @@ local combat = require("longod.DPSTooltips.combat")
 ---@field current Modifier
 
 ---@class Params
----@field data table
+---@field data ScratchData
 ---@field key tes3.effect
 ---@field value number
 ---@field speed number
@@ -70,27 +78,41 @@ local function CreateScratchData()
         attacker = {
             positives = {},
             negatives = {},
-            damageAttributes = {},
-            damageSkills = {},
-            drainAttributes = {},
-            drainSkills = {},
-            fortifyAttributes = {},
-            fortifySkills = {},
-            restoreAttributes = {},
-            restoreSkills = {},
+            attributes = {
+                damage = {},
+                drain = {},
+                absorb = {},
+                restore = {},
+                fortify = {},
+            },
+            skills = {
+                damage = {},
+                drain = {},
+                absorb = {},
+                restore = {},
+                fortify = {},
+            },
+            resists = {},
         },
         target = {
             damages = {},
             positives = {},
             negatives = {},
-            damageAttributes = {},
-            damageSkills = {},
-            drainAttributes = {},
-            drainSkills = {},
-            fortifyAttributes = {},
-            fortifySkills = {},
-            restoreAttributes = {},
-            restoreSkills = {},
+            attributes = {
+                damage = {},
+                drain = {},
+                absorb = {},
+                restore = {},
+                fortify = {},
+            },
+            skills = {
+                damage = {},
+                drain = {},
+                absorb = {},
+                restore = {},
+                fortify = {},
+            },
+            resists = {},
         },
     }
     return data
@@ -329,9 +351,9 @@ local function FortifyAttribute(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.fortifyAttributes, params.attribute, params.value)
+        AddValue(params.data.attacker.attributes.fortify, params.attribute, params.value)
     else
-        AddValue(params.data.target.fortifyAttributes, params.attribute, params.value)
+        AddValue(params.data.target.attributes.fortify, params.attribute, params.value)
     end
     return true
 end
@@ -343,9 +365,9 @@ local function DamageAttribute(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.damageAttributes, params.attribute, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.attacker.attributes.damage, params.attribute, CalculateDPS(params.value, params.speed))
     else
-        AddValue(params.data.target.damageAttributes, params.attribute, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.target.attributes.damage, params.attribute, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -357,9 +379,9 @@ local function DrainAttribute(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.drainAttributes, params.attribute, params.value)
+        AddValue(params.data.attacker.attributes.drain, params.attribute, params.value)
     else
-        AddValue(params.data.target.drainAttributes, params.attribute, params.value)
+        AddValue(params.data.target.attributes.drain, params.attribute, params.value)
     end
     return true
 end
@@ -367,16 +389,16 @@ end
 ---@param params Params
 ---@return boolean
 local function AbsorbAttribute(params)
+    if not IsAffectedAttribute(params) then
+        return false
+    end
     if params.isSelf then
         return false
     else
-        -- FIXME value is applied resist/weakness magicka, so absorb is store absorb
-        local t = DrainAttribute(params)
-        params.isSelf = true               -- TODO immutalbe
-        params.attacker = true             -- fortifyAttribute
-        local a = FortifyAttribute(params)
-        return t or a
+        -- TODO resist and weakness then apply attcker
+        AddValue(params.data.target.attributes.absorb, params.attribute, params.value)
     end
+    return true
 end
 
 ---@param params Params
@@ -386,9 +408,9 @@ local function RestoreAttribute(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.restoreAttributes, params.attribute, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.attacker.attributes.restore, params.attribute, CalculateDPS(params.value, params.speed))
     else
-        AddValue(params.data.target.restoreAttributes, params.attribute, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.target.attributes.restore, params.attribute, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -400,9 +422,9 @@ local function FortifySkill(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.fortifySkills, params.skill, params.value)
+        AddValue(params.data.attacker.skills.fortify, params.skill, params.value)
     else
-        AddValue(params.data.target.fortifySkills, params.skill, params.value)
+        AddValue(params.data.target.skills.fortify, params.skill, params.value)
     end
     return true
 end
@@ -414,9 +436,9 @@ local function DamageSkill(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.damageSkills, params.skill, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.attacker.skills.damage, params.skill, CalculateDPS(params.value, params.speed))
     else
-        AddValue(params.data.target.damageSkills, params.skill, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.target.skills.damage, params.skill, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -428,9 +450,9 @@ local function DrainSkill(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.drainSkills, params.skill, params.value)
+        AddValue(params.data.attacker.skills.drain, params.skill, params.value)
     else
-        AddValue(params.data.target.drainSkills, params.skill, params.value)
+        AddValue(params.data.target.skills.drain, params.skill, params.value)
     end
     return true
 end
@@ -438,16 +460,16 @@ end
 ---@param params Params
 ---@return boolean
 local function AbsorbSkill(params)
+    if not IsAffectedSkill(params) then
+        return false
+    end
     if params.isSelf then
         return false
     else
-        -- FIXME value is applied resist/weakness magicka, so absorb is store absorb
-        local t = DrainSkill(params)
-        params.isSelf = true           -- TODO immutable
-        params.attacker = true         -- fortifySkill
-        local a = FortifySkill(params)
-        return t or a
+        -- TODO resist and weakness then apply attcker
+        AddValue(params.data.target.skills.absorb, params.skill, params.value)
     end
+    return true
 end
 
 ---@param params Params
@@ -457,9 +479,9 @@ local function RestoreSkill(params)
         return false
     end
     if params.isSelf then
-        AddValue(params.data.attacker.restoreSkills, params.skill, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.attacker.skills.restore, params.skill, CalculateDPS(params.value, params.speed))
     else
-        AddValue(params.data.target.restoreSkills, params.skill, CalculateDPS(params.value, params.speed))
+        AddValue(params.data.target.skills.restore, params.skill, CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -997,8 +1019,8 @@ end
 ---@param icons { [tes3.effect]: string[] }
 ---@param resistMagicka number
 local function ResolveModifiers(effect, icons, resistMagicka)
-    effect.target.resists = {}
-    effect.attacker.resists = {}
+    -- effect.target.resists = {}
+    -- effect.attacker.resists = {}
     -- resist/weakness magicka
     local rm = tes3.effect.resistMagicka
     local wm = tes3.effect.weaknesstoMagicka
@@ -1096,8 +1118,8 @@ end
 ---@return number
 local function GetModifiedAttribute(e, t, attributes)
     local current = attributes[t + 1].current
-    if e.damageAttributes[t] then
-        current = current - e.damageAttributes[t]
+    if e.attributes.damage[t] then
+        current = current - e.attributes.damage[t]
     end
 
     -- TODO mcp fix or unfix
@@ -1107,16 +1129,19 @@ local function GetModifiedAttribute(e, t, attributes)
     -- Restore attributes spells did not recognise Fortify effects when restoring. Take for example, a base agility of 50, fortified by +30 to 80. If your agility was damaged below 80, a Restore spell would only restore up to 50 and stop working. Restore attributes spells now restore up to your fully fortified amount.
     -- The same problem occurred when Drain attributes spells expired. These should now restore the fortified attribute properly as well.
 
-    if e.restoreAttributes[t] then -- can restore drained value?
+    if e.attributes.restore[t] then -- can restore drained value?
         local base = attributes[t + 1].base
         local decreased = math.max(base - current, 0)
-        current = current + math.min(e.restoreAttributes[t], decreased)
+        current = current + math.min(e.attributes.restore[t], decreased)
     end
-    if e.drainAttributes[t] then
-        current = current - e.drainAttributes[t] -- at once
+    if e.attributes.drain[t] then
+        current = current - e.attributes.drain[t] -- at once
     end
-    if e.fortifyAttributes[t] then
-        current = current + e.fortifyAttributes[t]
+    if e.attributes.fortify[t] then
+        current = current + e.attributes.fortify[t]
+    end
+    if e.attributes.absorb[t] then
+        current = current - e.attributes.absorb[t] -- NOTE attacker's sign must be negative
     end
     return current
 end
@@ -1127,21 +1152,24 @@ end
 ---@return number
 local function GetModifiedSkill(e, t, skills)
     local current = skills[t + 1].current
-    if e.damageSkills[t] then
-        current = current - e.damageSkills[t]
+    if e.skills.damage[t] then
+        current = current - e.skills.damage[t]
     end
     -- TODO mcp fix or unfix
 
-    if e.restoreSkills[t] then -- can restore drained value?
+    if e.skills.restore[t] then -- can restore drained value?
         local base = skills[t + 1].base
         local decreased = math.max(base - current, 0)
-        current = current + math.min(e.restoreSkills[t], 0)
+        current = current + math.min(e.skills.restore[t], 0)
     end
-    if e.drainSkills[t] then
-        current = current - e.drainSkills[t] -- at once
+    if e.skills.drain[t] then
+        current = current - e.skills.drain[t] -- at once
     end
-    if e.fortifySkills[t] then
-        current = current + e.fortifySkills[t]
+    if e.skills.fortify[t] then
+        current = current + e.skills.fortify[t]
+    end
+    if e.skills.absorb[t] then
+        current = current - e.skills.absorb[t] -- NOTE attacker's sign must be negative
     end
     return current
 end
@@ -1516,13 +1544,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.fortifyAttributes[params.attribute]).toBe(10)
+                unitwind:expect(data.target.attributes.fortify[params.attribute]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.fortifyAttributes[params.attribute]).toBe(10)
+                unitwind:expect(data.attacker.attributes.fortify[params.attribute]).toBe(10)
             end
         end
     end)
@@ -1548,13 +1576,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.damageAttributes[params.attribute]).toBe(20)
+                unitwind:expect(data.target.attributes.damage[params.attribute]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.damageAttributes[params.attribute]).toBe(20)
+                unitwind:expect(data.attacker.attributes.damage[params.attribute]).toBe(20)
             end
         end
     end)
@@ -1580,13 +1608,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.drainAttributes[params.attribute]).toBe(10)
+                unitwind:expect(data.target.attributes.drain[params.attribute]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.drainAttributes[params.attribute]).toBe(10)
+                unitwind:expect(data.attacker.attributes.drain[params.attribute]).toBe(10)
             end
         end
     end)
@@ -1610,12 +1638,9 @@ function DPS.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v.target or v.attacker)
+            unitwind:expect(affect).toBe(v.target)
             if v.target then
-                unitwind:expect(data.target.drainAttributes[params.attribute]).toBe(10)
-            end
-            if v.attacker then
-                unitwind:expect(data.attacker.fortifyAttributes[params.attribute]).toBe(10)
+                unitwind:expect(data.target.attributes.absorb[params.attribute]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
@@ -1644,13 +1669,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.restoreAttributes[params.attribute]).toBe(20)
+                unitwind:expect(data.target.attributes.restore[params.attribute]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.restoreAttributes[params.attribute]).toBe(20)
+                unitwind:expect(data.attacker.attributes.restore[params.attribute]).toBe(20)
             end
         end
     end)
@@ -1677,13 +1702,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.fortifySkills[params.skill]).toBe(10)
+                unitwind:expect(data.target.skills.fortify[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.fortifySkills[params.skill]).toBe(10)
+                unitwind:expect(data.attacker.skills.fortify[params.skill]).toBe(10)
             end
             params.weaponSkillId = tes3.skill.unarmored -- mismatch
             affect = r.func(params)
@@ -1713,13 +1738,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.damageSkills[params.skill]).toBe(20)
+                unitwind:expect(data.target.skills.damage[params.skill]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.damageSkills[params.skill]).toBe(20)
+                unitwind:expect(data.attacker.skills.damage[params.skill]).toBe(20)
             end
             params.weaponSkillId = tes3.skill.unarmored -- mismatch
             affect = r.func(params)
@@ -1749,13 +1774,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.drainSkills[params.skill]).toBe(10)
+                unitwind:expect(data.target.skills.drain[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.drainSkills[params.skill]).toBe(10)
+                unitwind:expect(data.attacker.skills.drain[params.skill]).toBe(10)
             end
             params.weaponSkillId = tes3.skill.unarmored -- mismatch
             affect = r.func(params)
@@ -1783,12 +1808,9 @@ function DPS.RunTest(self, unitwind)
                 weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v.target or v.attacker)
+            unitwind:expect(affect).toBe(v.target)
             if v.target then
-                unitwind:expect(data.target.drainSkills[params.skill]).toBe(10)
-            end
-            if v.attacker then
-                unitwind:expect(data.attacker.fortifySkills[params.skill]).toBe(10)
+                unitwind:expect(data.target.skills.absorb[params.skill]).toBe(10)
             end
             params.isSelf = true
             affect = r.func(params)
@@ -1821,13 +1843,13 @@ function DPS.RunTest(self, unitwind)
             local affect = r.func(params)
             unitwind:expect(affect).toBe(v.target)
             if affect then
-                unitwind:expect(data.target.restoreSkills[params.skill]).toBe(20)
+                unitwind:expect(data.target.skills.restore[params.skill]).toBe(20)
             end
             params.isSelf = true
             affect = r.func(params)
             unitwind:expect(affect).toBe(v.attacker)
             if affect then
-                unitwind:expect(data.attacker.restoreSkills[params.skill]).toBe(20)
+                unitwind:expect(data.attacker.skills.restore[params.skill]).toBe(20)
             end
             params.weaponSkillId = tes3.skill.unarmored -- mismatch
             affect = r.func(params)

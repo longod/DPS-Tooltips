@@ -32,7 +32,6 @@ Anyone who knows more about this would be grateful for advice.
 ## TODO:
 - Attribute effects
 - Skill effects
-- Resist or Weakness to Normal Weapons
 - Chance to Hit, Evasion and Blocking
 - Difficulty
 - Modded magic effects
@@ -45,6 +44,7 @@ Anyone who knows more about this would be grateful for advice.
 
 ## Not Supported:
 - On Use Enchantment 
+- Resist or Weakness to Normal Weapons
 - OpenMW (Sorry!)
 
 ## Known Issues:
