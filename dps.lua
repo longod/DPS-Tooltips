@@ -16,7 +16,7 @@
 ---@field blindFix integer
 ---@field rangedWeaponCanCastOnSTrike boolean
 ---@field throwWeaponAlreadyModified boolean
----@field poisonCrafting boolean
+---@field poisonCrafting PoisonCrafting
 local DPS = {}
 
 ---@param cfg Config?
@@ -395,7 +395,6 @@ local function AbsorbAttribute(params)
     if params.isSelf then
         return false
     else
-        -- TODO resist and weakness then apply attcker
         AddValue(params.data.target.attributes.absorb, params.attribute, params.value)
     end
     return true
@@ -466,7 +465,6 @@ local function AbsorbSkill(params)
     if params.isSelf then
         return false
     else
-        -- TODO resist and weakness then apply attcker
         AddValue(params.data.target.skills.absorb, params.skill, params.value)
     end
     return true
@@ -640,23 +638,6 @@ local resolver = {
     -- sEffectSummonCreature05 142
 }
 
---- Poison Crafting
---- @param item tes3weapon
---- @param itemData tes3itemData?
---- @return tes3alchemy?
-local function GetPoison(item, itemData)
-    local id
-    local projectile = tes3.player.data.g7_poisons and tes3.player.data.g7_poisons[item.id] or nil
-    if projectile then
-        id = projectile.poison
-    elseif itemData then
-        id = itemData.data.g7_poison
-    end
-    if id then
-        local obj = tes3.getObject(id) ---@cast obj tes3alchemy
-        return obj
-    end
-end
 
 ---@param self DPS
 function DPS.Initialize(self)
@@ -717,10 +698,10 @@ function DPS.Initialize(self)
         self.throwWeaponAlreadyModified = true
     end
 
-    self.poisonCrafting = false
+    self.poisonCrafting = nil
     if tes3.isLuaModActive("poisonCrafting") then
         logger:info("Enabled Poison Crafting")
-        self.poisonCrafting = true
+        self.poisonCrafting = require("longod.DPSTooltips.poison")
     end
 end
 
@@ -1047,9 +1028,9 @@ local function ResolveModifiers(effect, icons, resistMagicka)
 
     -- probability
     -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
-    local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
-        GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
-    local dispelChance = InverseNormalizeMagnitude(GetValue(effect.target.positives, tes3.effect.dispel, 0))
+    -- local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
+    --     GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
+    -- local dispelChance = InverseNormalizeMagnitude(GetValue(effect.target.positives, tes3.effect.dispel, 0))
 
     -- merge resist/weakness elemental and shield
     local resistweakness = {
@@ -1072,23 +1053,31 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         MergeIcons(icons, k, v[1])
     end
 
-    -- attrib, skill
-    local function ApplyResistMagicka(actor, mod)
-        for k, v in pairs(actor.damageAttributes) do
-            actor.damageAttributes[k] = v * mod
+    -- negative attrib, skill
+    ---@param modifiers AttributeModifier|SkillModifier
+    ---@param mod number
+    local function ApplyResistMagicka(modifiers, mod)
+        for k, v in pairs(modifiers.damage) do
+            modifiers.damage[k] = v * mod
         end
-        for k, v in pairs(actor.drainAttributes) do
-            actor.damageAttributes[k] = v * mod
+        for k, v in pairs(modifiers.drain) do
+            modifiers.drain[k] = v * mod
         end
-        for k, v in pairs(actor.damageSkills) do
-            actor.damageAttributes[k] = v * mod
-        end
-        for k, v in pairs(actor.drainSkills) do
-            actor.damageAttributes[k] = v * mod
+        for k, v in pairs(modifiers.absorb) do
+            modifiers.absorb[k] = v * mod
         end
     end
-    ApplyResistMagicka(effect.target, targetResistMagicka)
-    ApplyResistMagicka(effect.attacker, attackerResistMagicka)
+    ApplyResistMagicka(effect.target.attributes, targetResistMagicka)
+    ApplyResistMagicka(effect.target.skills, targetResistMagicka)
+    ApplyResistMagicka(effect.attacker.attributes, attackerResistMagicka)
+    ApplyResistMagicka(effect.attacker.skills, attackerResistMagicka)
+    -- absorb values from target to attacker
+    for k, v in pairs(effect.target.attributes.absorb) do
+        effect.attacker.attributes.absorb[k] = -v -- invert for GetModified
+    end
+    for k, v in pairs(effect.target.skills.absorb) do
+        effect.attacker.skills.absorb[k] = -v -- invert for GetModified
+    end
 
     -- damage
     local e = effect.target
@@ -1141,7 +1130,7 @@ local function GetModifiedAttribute(e, t, attributes)
         current = current + e.attributes.fortify[t]
     end
     if e.attributes.absorb[t] then
-        current = current - e.attributes.absorb[t] -- NOTE attacker's sign must be negative
+        current = current - e.attributes.absorb[t] -- HACK attacker's sign must be negative
     end
     return current
 end
@@ -1169,7 +1158,7 @@ local function GetModifiedSkill(e, t, skills)
         current = current + e.skills.fortify[t]
     end
     if e.skills.absorb[t] then
-        current = current - e.skills.absorb[t] -- NOTE attacker's sign must be negative
+        current = current - e.skills.absorb[t] -- HACK attacker's sign must be negative
     end
     return current
 end
@@ -1226,7 +1215,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon), weapon.skillId)
 
     if self.poisonCrafting then
-        local poison = GetPoison(weapon, itemData)
+        local poison = self.poisonCrafting.GetPoison(weapon, itemData)
         if poison then 
             -- poison effect is only once, so speed is 1
             -- Also in vanilla, potion's effectRange is always self, because of it cannot be applied to weapons. Therefore, it is forced to be touch effect
