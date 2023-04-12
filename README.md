@@ -20,6 +20,7 @@ Anyone who knows more about this would be grateful for advice.
   - Game Formula Restoration
 - [Cast on Strike Bows](https://www.nexusmods.com/morrowind/mods/45913)
 - [Thrown Projectiles Revamped](https://www.nexusmods.com/morrowind/mods/49609)
+- [Poison Crafting](https://www.nexusmods.com/morrowind/mods/45729)
 - [MWSE Compare Tooltips](https://www.nexusmods.com/morrowind/mods/51087)
 - Other item tooltip mods
   - It's not explicitly compatible, but it works fine.
@@ -36,7 +37,6 @@ Anyone who knows more about this would be grateful for advice.
 - Difficulty
 - Modded magic effects
 - Other [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) features
-- [Poison Crafting](https://www.nexusmods.com/morrowind/mods/45729)
 
 ## By Design, Currently:
 - Damage or Healing Over Time effects only use the first applied effect. Because this mod does not calculate total damage numerically.

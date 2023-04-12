@@ -32,7 +32,7 @@ function this.OnModConfigReady()
     page:createOnOffButton {
         label = "Display Min - Max",
         description = (
-            "Show min to max DPS range.\n" ..
+            "Show minimum to maximum DPS range. When disabled, only display maximum.\n" ..
             "In Morrowind, the weapon's damage range is determined by how long the attack key is held, not by RNG. Therefore, the average value does not become DPS.\n" ..
             "\nDefault: On"
             ),

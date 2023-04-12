@@ -30,6 +30,7 @@ function DPS.new(cfg)
 end
 
 local logger = require("longod.DPSTooltips.logger")
+local combat = require("longod.DPSTooltips.combat")
 
 ---@class Modifier
 ---@field damages {[tes3.effect] : number}
@@ -328,7 +329,6 @@ local function FortifyAttribute(params)
         return false
     end
     if params.isSelf then
-        -- TODO if player equiped constant effect weapon then skip this.
         AddValue(params.data.attacker.fortifyAttributes, params.attribute, params.value)
     else
         AddValue(params.data.target.fortifyAttributes, params.attribute, params.value)
@@ -357,7 +357,6 @@ local function DrainAttribute(params)
         return false
     end
     if params.isSelf then
-        -- TODO if player equiped constant effect weapon then skip this.
         AddValue(params.data.attacker.drainAttributes, params.attribute, params.value)
     else
         AddValue(params.data.target.drainAttributes, params.attribute, params.value)
@@ -371,10 +370,11 @@ local function AbsorbAttribute(params)
     if params.isSelf then
         return false
     else
+        -- FIXME value is applied resist/weakness magicka, so absorb is store absorb
         local t = DrainAttribute(params)
         params.isSelf = true               -- TODO immutalbe
         params.attacker = true             -- fortifyAttribute
-        local a = FortifyAttribute(params) -- value is applied resist/weakness magicka?
+        local a = FortifyAttribute(params)
         return t or a
     end
 end
@@ -400,7 +400,6 @@ local function FortifySkill(params)
         return false
     end
     if params.isSelf then
-        -- TODO if player equiped constant effect weapon then skip this.
         AddValue(params.data.attacker.fortifySkills, params.skill, params.value)
     else
         AddValue(params.data.target.fortifySkills, params.skill, params.value)
@@ -429,7 +428,6 @@ local function DrainSkill(params)
         return false
     end
     if params.isSelf then
-        -- TODO if player equiped constant effect weapon then skip this.
         AddValue(params.data.attacker.drainSkills, params.skill, params.value)
     else
         AddValue(params.data.target.drainSkills, params.skill, params.value)
@@ -443,10 +441,11 @@ local function AbsorbSkill(params)
     if params.isSelf then
         return false
     else
+        -- FIXME value is applied resist/weakness magicka, so absorb is store absorb
         local t = DrainSkill(params)
         params.isSelf = true           -- TODO immutable
         params.attacker = true         -- fortifySkill
-        local a = FortifySkill(params) -- value is applied resist/weakness magicka?
+        local a = FortifySkill(params)
         return t or a
     end
 end
@@ -465,15 +464,12 @@ local function RestoreSkill(params)
     return true
 end
 
-
--- only vanilla
--- TODO add config mod efect
-
 ---@class Resolver
 ---@field func fun(params: Params): boolean
 ---@field attacker boolean
 ---@field target boolean
 
+-- only vanilla effects
 ---@class ResolverTable
 ---@field [number] Resolver?
 local resolver = {
@@ -622,6 +618,24 @@ local resolver = {
     -- sEffectSummonCreature05 142
 }
 
+--- Poison Crafting
+--- @param item tes3weapon
+--- @param itemData tes3itemData?
+--- @return tes3alchemy?
+local function GetPoison(item, itemData)
+    local id
+    local projectile = tes3.player.data.g7_poisons and tes3.player.data.g7_poisons[item.id] or nil
+    if projectile then
+        id = projectile.poison
+    elseif itemData then
+        id = itemData.data.g7_poison
+    end
+    if id then
+        local obj = tes3.getObject(id) ---@cast obj tes3alchemy
+        return obj
+    end
+end
+
 ---@param self DPS
 function DPS.Initialize(self)
     ---@diagnostic disable: need-check-nil
@@ -681,10 +695,9 @@ function DPS.Initialize(self)
         self.throwWeaponAlreadyModified = true
     end
 
-    -- TODO compatible Poison Crafting
     self.poisonCrafting = false
     if tes3.isLuaModActive("poisonCrafting") then
-        -- logger:info("Enabled Poison Crafting")
+        logger:info("Enabled Poison Crafting")
         self.poisonCrafting = true
     end
 end
@@ -719,6 +732,53 @@ local function GenerateKey(effect, attribute, skill)
     return key
 end
 
+---@param data ScratchData
+---@param icons { [tes3.effect]: string[] }
+---@param effects tes3effect[]
+---@param weaponSpeed number
+---@param weaponSkillId tes3.skill
+---@param forceTargetEffects boolean
+---@return ScratchData
+---@return { [tes3.effect]: string[] }
+local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, forceTargetEffects)
+    for _, effect in ipairs(effects) do
+        
+        if effect ~= nil and effect.id >= 0 then
+            local id = effect.id
+            local r = resolver[id]
+            if r then
+                local value = (effect.max + effect.min) * 0.5 -- uniform RNG average
+                local isSelf = effect.rangeType == tes3.effectRange.self
+                if forceTargetEffects then 
+                    isSelf = false
+                end
+                ---@type Params
+                local params = {
+                    data = data,
+                    key = id,
+                    value = value,
+                    speed = weaponSpeed,
+                    isSelf = isSelf,
+                    attacker = r.attacker,
+                    target = r.target,
+                    attribute = effect.attribute, -- if invalid it returns -1. not nil.
+                    skill = effect.skill,         -- if invalid it returns -1. not nil.
+                    weaponSkillId = weaponSkillId,
+                }
+                local affect = r.func(params)
+                if affect and id ~= nil then
+                    -- adding own key, then merge on resolve phase
+                    if not icons[id] then
+                        icons[id] = {}
+                    end
+                    table.insert(icons[id], effect.object.icon)
+                end
+            end
+        end
+    end
+    return data, icons
+end
+
 ---@param enchantment tes3enchantment
 ---@param weaponSpeed number
 ---@param canCastOnStrike boolean
@@ -732,91 +792,15 @@ local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrik
 
     if enchantment then
         -- todo not yet on cast
-        -- todo on strike effect consider charge cost
+        -- better is on strike effect consider charge cost
         local onStrike = canCastOnStrike and enchantment.castType == tes3.enchantmentType.onStrike
         local constant = enchantment.castType == tes3.enchantmentType.constant
         if onStrike or constant then
-            for _, effect in ipairs(enchantment.effects) do
-                if effect ~= nil and effect.id >= 0 then
-                    local id = effect.id
-                    local r = resolver[id]
-                    if r then
-                        local value = (effect.max + effect.min) * 0.5 -- uniform RNG average
-                        local isSelf = effect.rangeType == tes3.effectRange.self
-                        ---@type Params
-                        local params = {
-                            data = data,
-                            key = id,
-                            value = value,
-                            speed = weaponSpeed,
-                            isSelf = isSelf,
-                            attacker = r.attacker,
-                            target = r.target,
-                            attribute = effect.attribute, -- if invalid it returns -1. not nil.
-                            skill = effect.skill,         -- if invalid it returns -1. not nil.
-                            weaponSkillId = weaponSkillId,
-                        }
-                        local affect = r.func(params)
-                        if affect and id ~= nil then
-                            -- adding own key, then merge on resolve phase
-                            if not icons[id] then
-                                icons[id] = {}
-                            end
-                            table.insert(icons[id], effect.object.icon)
-                        end
-                    end
-                end
-            end
+            CollectEffects(data, icons, enchantment.effects, weaponSpeed, weaponSkillId, false)
         end
     end
 
     return data, icons
-end
-
----@param weaponDamage number
----@param strengthModifier number
----@param conditionModifier number
----@param criticalHitModifier number
----@return number
-local function CalculateAcculateWeaponDamage(weaponDamage, strengthModifier, conditionModifier, criticalHitModifier)
-    return (weaponDamage * strengthModifier * conditionModifier * criticalHitModifier)
-end
-
----@param hitRate number
----@param evation number
----@return number
-local function CalculateChanceToHit(hitRate, evation)
-    return math.clamp(hitRate - evation, 0.0, 1.0)
-end
-
----@param armorRating number
----@param damage number
----@param armorMinMult number
----@return number
-local function CalculateDamageReductionFromArmorRating(damage, armorRating, armorMinMult)
-    return math.max(damage * math.max(damage / (damage + armorRating), armorMinMult), 1.0)
-end
-
--- TODO MCP blid patch
----comment
----@param weaponSkill number
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param fortifyAttack number
----@param blind number
----@return number
-local function CalculateHitRate(weaponSkill, agility, luck, fatigueTerm, fortifyAttack, blind)
-    return (weaponSkill + (agility * 0.2) + (luck * 0.1)) * fatigueTerm + fortifyAttack + blind
-end
-
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param sanctuary number
----@return number
-local function CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
-    return ((agility * 0.2) + (luck * 0.1)) * fatigueTerm + math.min(sanctuary, 100)
 end
 
 ---@param self DPS
@@ -834,7 +818,7 @@ function DPS.CalculateEvasion(self, agility, luck, fatigueTerm, sanctuary, chame
                               isParalyzed, unware)
     local evasion = 0
     if not (isKnockedDown or isParalyzed or unware) then
-        evasion = CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
+        evasion = combat.CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
     end
     evasion = evasion + math.min(self.fCombatInvisoMult * chameleon, 100)
     evasion = evasion + math.min(self.fCombatInvisoMult * (invisibility and 1 or 0), 100)
@@ -919,17 +903,17 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armo
             damageMultCond = GetConditionModifier(weapon, itemData)
         end
     end
-    local minSpeed = speed -- TODO maybe quickly, it seems depends animation frame
-    local maxSpeed = speed
+    local minSpeed = speed -- TODO maybe more quickly, it seems depends animation frame
+    local maxSpeed = speed -- same as animation frame?
     for i, v in pairs(baseDamage) do
         if self.config.accurateDamage then
-            v.min = CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
-            v.max = CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
+            v.min = combat.CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
+            v.max = combat.CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
 
             -- The reduction occurs only after all the multipliers are applied to the damage.
             if armorRating > 0 then
-                v.min = CalculateDamageReductionFromArmorRating(v.min, armorRating, self.fCombatArmorMinMult)
-                v.max = CalculateDamageReductionFromArmorRating(v.max, armorRating, self.fCombatArmorMinMult)
+                v.min = combat.CalculateDamageReductionFromArmorRating(v.min, armorRating, self.fCombatArmorMinMult)
+                v.max = combat.CalculateDamageReductionFromArmorRating(v.max, armorRating, self.fCombatArmorMinMult)
             end
         end
         v.min = CalculateDPS(v.min, minSpeed)
@@ -938,13 +922,14 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armo
     return baseDamage
 end
 
+-- TODO rename
+-- TODO useBestAttack timing is too late, should be base damage phase. but results almost same
 ---@param weaponDamages { [tes3.physicalAttackType]: DamageRange }
----@param effect ScratchData
 ---@param minmaxRange boolean
 ---@param useBestAttack boolean
 ---@return DamageRange
 ---@return { [tes3.physicalAttackType] :boolean }
-local function ResolveWeaponDPS(weaponDamages, effect, minmaxRange, useBestAttack)
+local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
     local damageRange = { min = 0, max = 0 } ---@type DamageRange
     local highestType = {}
     local typeDamages = {}
@@ -982,10 +967,9 @@ local function MergeIcons(icons, dest, src)
 end
 
 ---@param effect ScratchData
----@param icons { [tes3.effect]: string[] }
 ---@return number
 ---@return {[tes3.effect]: number}
-local function ResolveEffectDPS(effect, icons)
+local function ResolveEffectDPS(effect)
     local effectDamages = {}
     local effectTotal = 0
 
@@ -1027,6 +1011,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
+    -- TODO use acculate option? or remove opiton
     for k, v in pairs(effect.target.negatives) do
         if k ~= tes3.effect.weaknesstoMagicka then
             effect.target.negatives[k] = v * targetResistMagicka
@@ -1096,7 +1081,6 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         [tes3.effect.sunDamage] = nil,                         -- only vampire
     }
 
-
     for k, v in pairs(pair) do
         if v then
             local damage = GetValue(e.damages, k, 0) * GetValue(e.resists, v, 1.0)
@@ -1146,6 +1130,8 @@ local function GetModifiedSkill(e, t, skills)
     if e.damageSkills[t] then
         current = current - e.damageSkills[t]
     end
+    -- TODO mcp fix or unfix
+
     if e.restoreSkills[t] then -- can restore drained value?
         local base = skills[t + 1].base
         local decreased = math.max(base - current, 0)
@@ -1207,12 +1193,19 @@ end
 ---@return DPSData
 function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local marksman = weapon.isRanged or weapon.isProjectile
-    local speed = weapon.speed
-    if marksman then
-        speed = 1 -- TODO it seems ranged weapon always return 1, but here uses actual speed.
-    end
+    local speed = weapon.speed -- TODO perhaps speed is scale factor, not acutal length
 
     local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon), weapon.skillId)
+
+    if self.poisonCrafting then
+        local poison = GetPoison(weapon, itemData)
+        if poison then 
+            -- poison effect is only once, so speed is 1
+            -- Also in vanilla, potion's effectRange is always self, because of it cannot be applied to weapons. Therefore, it is forced to be touch effect
+            CollectEffects(effect, icons, poison.effects, 1, weapon.skillId, true)
+        end
+    end
+
     -- TODO this resist magicka should ignore applied effect from this weapon
     local resistMagicka = tes3.mobilePlayer.resistMagicka
     ResolveModifiers(effect, icons, resistMagicka)
@@ -1260,8 +1253,8 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local armorRating = GetTargetArmorRating(effect);
 
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, marksman)
-    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, effect, self.config.minmaxRange, useBestAttack)
-    local effectTotal, effectDamages = ResolveEffectDPS(effect, icons)
+    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, self.config.minmaxRange, useBestAttack)
+    local effectTotal, effectDamages = ResolveEffectDPS(effect)
 
     return {
         weaponDamageRange = weaponDamageRange,
