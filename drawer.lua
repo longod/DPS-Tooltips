@@ -275,8 +275,8 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
     }
 
     for _, k in ipairs(effectOrder) do
-        local v = data.effectDamages[k]
-        if v and v ~= 0 then
+        local v = data.effectDamages[k] and data.effectDamages[k] or 0
+        if (v ~= 0) or (data.icons[k] and #data.icons[k] > 0) then -- has any effects from icons
             local block = CreateBlock(element, self.idEffectBlock)
             block.borderAllSides = 1
 

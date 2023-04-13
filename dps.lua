@@ -381,7 +381,7 @@ local function ResolveEffectDPS(effect)
         tes3.effect.fortifyHealth,
     }
     for _, v in ipairs(healing) do
-        local h          = GetValue(effect.target.positives, v, 0)
+        local h          = resolver.GetValue(effect.target.positives, v, 0)
         effectDamages[v] = -h -- display value is negative
         effectTotal      = effectTotal - h
     end
@@ -400,10 +400,13 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     local wm = tes3.effect.weaknesstoMagicka
     -- Once Resist Magicka reaches 100%, it's the only type of resistance that can't be broken by a Weakness effect, since Weakness is itself a magicka type spell.
     -- so if both apply, above works?
-    local targetResistMagicka = combat.InverseNormalizeMagnitude(GetValue(effect.target.positives, rm, 0))
-    targetResistMagicka = combat.InverseNormalizeMagnitude(GetValue(effect.target.negatives, wm, 0)) * targetResistMagicka
-    local attackerResistMagicka = combat.InverseNormalizeMagnitude(GetValue(effect.attacker.positives, rm, 0) + resistMagicka)
-    attackerResistMagicka = combat.InverseNormalizeMagnitude(GetValue(effect.attacker.negatives, wm, 0)) * attackerResistMagicka
+    local targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.positives, rm, 0))
+    targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.negatives, wm, 0)) *
+    targetResistMagicka
+    local attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.positives, rm, 0) +
+    resistMagicka)
+    attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.negatives, wm, 0)) *
+    attackerResistMagicka
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
@@ -421,9 +424,9 @@ local function ResolveModifiers(effect, icons, resistMagicka)
 
     -- probability
     -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
-    -- local reflectChance = GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
-    --     GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
-    -- local dispelChance = InverseNormalizeMagnitude(GetValue(effect.target.positives, tes3.effect.dispel, 0))
+    -- local reflectChance = resolver.GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
+    --     resolver.GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
+    -- local dispelChance = InverseNormalizeMagnitude(resolver.GetValue(effect.target.positives, tes3.effect.dispel, 0))
 
     -- merge resist/weakness elemental and shield
     local resistweakness = {
@@ -435,12 +438,12 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         [tes3.effect.resistNormalWeapons] = { tes3.effect.weaknesstoNormalWeapons },
     }
     for k, v in pairs(resistweakness) do
-        local resist = GetValue(effect.target.positives, k, 0)
+        local resist = resolver.GetValue(effect.target.positives, k, 0)
         if v[2] then -- shield
-            resist = resist + GetValue(effect.target.positives, v[2], 0)
+            resist = resist + resolver.GetValue(effect.target.positives, v[2], 0)
             MergeIcons(icons, k, v[2])
         end
-        resist = resist - GetValue(effect.target.negatives, v[1], 0)
+        resist = resist - resolver.GetValue(effect.target.negatives, v[1], 0)
         effect.target.resists[k] = combat.InverseNormalizeMagnitude(resist)
 
         MergeIcons(icons, k, v[1])
@@ -487,17 +490,15 @@ local function ResolveModifiers(effect, icons, resistMagicka)
 
     for k, v in pairs(pair) do
         if v then
-            local damage = GetValue(e.damages, k, 0) * GetValue(e.resists, v, 1.0)
+            local damage = resolver.GetValue(e.damages, k, 0) * resolver.GetValue(e.resists, v, 1.0)
             e.damages[k] = damage
             MergeIcons(icons, k, v)
         end
     end
 
     -- cure poison
-    if GetValue(e.positives, tes3.effect.curePoison, 0) > 0 and e.damages[tes3.effect.poison] then
+    if resolver.GetValue(e.positives, tes3.effect.curePoison, 0) > 0 and e.damages[tes3.effect.poison] then
         e.damages[tes3.effect.poison] = 0
-        -- FIXME cure poison icon is not displayed. because of effect dps appears value > 0
-        -- value > 0 and icon not empty?
         MergeIcons(icons, tes3.effect.poison, tes3.effect.curePoison)
     end
 end
@@ -566,7 +567,7 @@ end
 
 ---@param effect ScratchData
 local function GetTargetArmorRating(effect)
-    local shield = GetValue(effect.target.positives, tes3.effect.shield, 0);
+    local shield = resolver.GetValue(effect.target.positives, tes3.effect.shield, 0);
     return shield -- currently only shield effect
 end
 
@@ -614,7 +615,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local speed = weapon.speed -- TODO perhaps speed is scale factor, not acutal length
 
     local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon),
-    weapon.skillId)
+        weapon.skillId)
 
     if self.poisonCrafting then
         local poison = self.poisonCrafting.GetPoison(weapon, itemData)
