@@ -74,6 +74,4 @@ function this.CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
     return ((agility * 0.2) + (luck * 0.1)) * fatigueTerm + math.min(sanctuary, 100)
 end
 
-
-
 return this

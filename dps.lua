@@ -35,8 +35,8 @@ local resolver = require("longod.DPSTooltips.effect")
 
 ---@param self DPS
 function DPS.Initialize(self)
+    -- move gmst values to combat?
     ---@diagnostic disable: need-check-nil
-    -- TODO @cast if possible
     ---@diagnostic disable: assign-type-mismatch
     self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value
     self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value
@@ -106,29 +106,6 @@ function DPS.CanCastOnStrike(self, weapon)
     return self.rangedWeaponCanCastOnSTrike or weapon.isRanged == false
 end
 
--- combination effect id, attribute, skill
----@param effect tes3.effect
----@param attribute tes3.attribute?
----@param skill tes3.skill?
----@return integer
-local function GenerateKey(effect, attribute, skill)
-    local b = require("bit")
-    local key = 0
-    if effect ~= nil and effect >= 0 then
-        key = effect
-        logger:debug(string.format("%d", effect))
-    end
-    if attribute and attribute >= 0 then
-        key = b.bor(b.lshift(attribute, 16), key)
-        logger:debug(string.format("%d", attribute))
-    end
-    if skill and skill >= 0 then
-        key = b.bor(b.lshift(skill, 16 + 4), key)
-        logger:debug(string.format("%d", skill))
-    end
-    return key
-end
-
 ---@param data ScratchData
 ---@param icons { [tes3.effect]: string[] }
 ---@param effects tes3effect[]
@@ -160,6 +137,7 @@ local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, 
                     attribute = effect.attribute, -- if invalid it returns -1. not nil.
                     skill = effect.skill,         -- if invalid it returns -1. not nil.
                     weaponSkillId = weaponSkillId,
+                    actived = false
                 }
                 local affect = r.func(params)
                 if affect and id ~= nil then
@@ -175,19 +153,16 @@ local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, 
     return data, icons
 end
 
+---@param data ScratchData
+---@param icons { [tes3.effect]: string[] }
 ---@param enchantment tes3enchantment
 ---@param weaponSpeed number
 ---@param canCastOnStrike boolean
 ---@param weaponSkillId tes3.skill
 ---@return ScratchData
 ---@return { [tes3.effect]: string[] }
-local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrike, weaponSkillId)
-    local data = resolver.CreateScratchData()
-
-    local icons = {} ---@type {[tes3.effect]: string[]}
-
+local function CollectEnchantmentEffect(data, icons, enchantment, weaponSpeed, canCastOnStrike, weaponSkillId)
     if enchantment then
-        -- todo not yet on cast
         -- better is on strike effect consider charge cost
         local onStrike = canCastOnStrike and enchantment.castType == tes3.enchantmentType.onStrike
         local constant = enchantment.castType == tes3.enchantmentType.constant
@@ -197,6 +172,50 @@ local function CollectEnchantmentEffect(enchantment, weaponSpeed, canCastOnStrik
     end
 
     return data, icons
+end
+
+-- avoid double applied
+---@param data ScratchData
+---@param activeMagicEffectList tes3activeMagicEffect[]
+---@param weapon tes3weapon
+---@param canCastOnStrike boolean
+---@return ScratchData
+local function CollectActiveMagicEffect(data, activeMagicEffectList, weapon, canCastOnStrike)
+    if weapon.enchantment and activeMagicEffectList then
+        local onStrike = canCastOnStrike and weapon.enchantment.castType == tes3.enchantmentType.onStrike
+        local constant = weapon.enchantment.castType == tes3.enchantmentType.constant
+        if onStrike or constant then -- no on use
+            for _, a in ipairs(activeMagicEffectList) do
+                if a.instance.sourceType == tes3.magicSourceType.enchantment and
+                    a.instance.item and a.instance.item.objectType == tes3.objectType.weapon then
+                    -- only tooltip weapon, possible enemy attacked using same weapon?
+                    if a.instance.item.id == weapon.id and a.instance.magicID == weapon.enchantment.id and a.effectId >= 0 then
+                        -- logger:debug(weapon.id .. " " .. weapon.enchantment.id)
+                        local id = a.effectId
+                        local r = resolver.Get(id)
+                        if r then
+                            ---@type Params
+                            local params = {
+                                data = data,
+                                key = id,
+                                value = -a.effectInstance.effectiveMagnitude, -- counter resisted value
+                                speed = 1.0,
+                                isSelf = true,
+                                attacker = r.attacker,
+                                target = r.target,
+                                attribute = a.attributeId,
+                                skill = a.skillId,
+                                weaponSkillId = weapon.skillId,
+                                actived = true
+                            }
+                            r.func(params)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return data
 end
 
 ---@param self DPS
@@ -278,7 +297,7 @@ end
 ---@param baseFatigue number
 ---@return number
 function DPS.GetFatigueTerm(self, currentFatigue, baseFatigue)
-    return math.max(self.fFatigueBase - self.fFatigueMult * math.max(1.0 - currentFatigue / baseFatigue, 0.0), 0.0)
+    return combat.CalculateFatigueTerm(currentFatigue, baseFatigue, self.fFatigueBase, self.fFatigueMult)
 end
 
 ---@param self DPS
@@ -402,11 +421,11 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     -- so if both apply, above works?
     local targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.positives, rm, 0))
     targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.negatives, wm, 0)) *
-    targetResistMagicka
+        targetResistMagicka
     local attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.positives, rm, 0) +
-    resistMagicka)
+        resistMagicka)
     attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.negatives, wm, 0)) *
-    attackerResistMagicka
+        attackerResistMagicka
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
@@ -509,6 +528,12 @@ end
 ---@return number
 local function GetModifiedAttribute(e, t, attributes)
     local current = attributes[t + 1].current
+
+    -- avoid double applied
+    if e.actived then
+        current = GetModifiedAttribute(e.actived, t, attributes)
+    end
+
     if e.attributes.damage[t] then
         current = current - e.attributes.damage[t]
     end
@@ -543,6 +568,12 @@ end
 ---@return number
 local function GetModifiedSkill(e, t, skills)
     local current = skills[t + 1].current
+
+    -- avoid double applied
+    if e.actived then
+        current = GetModifiedAttribute(e.actived, t, skills)
+    end
+
     if e.skills.damage[t] then
         current = current - e.skills.damage[t]
     end
@@ -613,9 +644,12 @@ end
 function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed -- TODO perhaps speed is scale factor, not acutal length
+    local canCastOnStrike = self:CanCastOnStrike(weapon)
+    local effect = resolver.CreateScratchData()
+    local icons = {} ---@type {[tes3.effect]: string[]}
 
-    local effect, icons = CollectEnchantmentEffect(weapon.enchantment, speed, self:CanCastOnStrike(weapon),
-        weapon.skillId)
+    CollectEnchantmentEffect(effect, icons, weapon.enchantment, speed, canCastOnStrike, weapon.skillId)
+    CollectActiveMagicEffect(effect, tes3.mobilePlayer.activeMagicEffectList, weapon, canCastOnStrike)
 
     if self.poisonCrafting then
         local poison = self.poisonCrafting.GetPoison(weapon, itemData)
@@ -629,44 +663,6 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     -- TODO this resist magicka should ignore applied effect from this weapon
     local resistMagicka = tes3.mobilePlayer.resistMagicka
     ResolveModifiers(effect, icons, resistMagicka)
-
-    -- experimental: counter applied active magic effect
-    -- TODO before resolve for resistMagicka
-    -- split writing destination, values shoud not resist, they are resisted already.
-    if weapon.enchantment then
-        local onStrike = self:CanCastOnStrike(weapon) and weapon.enchantment.castType == tes3.enchantmentType.onStrike
-        local constant = weapon.enchantment.castType == tes3.enchantmentType.constant
-        if onStrike or constant then -- no on use
-            for _, a in ipairs(tes3.mobilePlayer.activeMagicEffectList) do
-                if a.instance.sourceType == tes3.magicSourceType.enchantment and
-                    a.instance.item and a.instance.item.objectType == tes3.objectType.weapon then
-                    -- only tooltip weapon, possible enemy attacked using same weapon.
-                    if a.instance.item.id == weapon.id and a.instance.magicID == weapon.enchantment.id and a.effectId >= 0 then
-                        logger:debug(weapon.id .. " " .. weapon.enchantment.id)
-                        local id = a.effectId
-                        local r = resolver.Get(id)
-                        if r then
-                            ---@type Params
-                            local params = {
-                                data = effect,
-                                key = id,
-                                value = -a.effectInstance.effectiveMagnitude, -- counter resisted value
-                                speed = 1.0,
-                                isSelf = true,
-                                attacker = r.attacker,
-                                target = r.target,
-                                attribute = a.attributeId,
-                                skill = a.skillId,
-                                weaponSkillId = weapon.skillId,
-                            }
-                            -- TODO use original function, but reusing almost case is ok
-                            r.func(params)
-                        end
-                    end
-                end
-            end
-        end
-    end
 
     -- TODO icons
     local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes)

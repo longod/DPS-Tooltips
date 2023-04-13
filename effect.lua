@@ -24,11 +24,11 @@ local combat = require("longod.DPSTooltips.combat")
 ---@field attributes AttributeModifier
 ---@field skills SkillModifier
 ---@field resists {[tes3.effect] : number} resolved resistance
+---@field actived Modifier
 
 ---@class ScratchData
 ---@field attacker Modifier
 ---@field target Modifier
----@field current Modifier
 
 ---@class Params
 ---@field data ScratchData
@@ -41,6 +41,7 @@ local combat = require("longod.DPSTooltips.combat")
 ---@field attribute tes3.attribute
 ---@field skill tes3.skill
 ---@field weaponSkillId tes3.skill
+---@field actived boolean
 
 ---@return ScratchData
 function this.CreateScratchData()
@@ -64,6 +65,26 @@ function this.CreateScratchData()
                 fortify = {},
             },
             resists = {},
+
+            actived = {
+                positives = {},
+                negatives = {},
+                attributes = {
+                    damage = {},
+                    drain = {},
+                    absorb = {},
+                    restore = {},
+                    fortify = {},
+                },
+                skills = {
+                    damage = {},
+                    drain = {},
+                    absorb = {},
+                    restore = {},
+                    fortify = {},
+                },
+                resists = {},
+            },
         },
         target = {
             damages = {},
@@ -242,7 +263,11 @@ end
 local function PositiveModifier(params)
     if params.isSelf then
         if params.attacker then
-            this.AddValue(params.data.attacker.positives, params.key, params.value)
+            if params.actived then
+                this.AddValue(params.data.attacker.actived.positives, params.key, params.value)
+            else
+                this.AddValue(params.data.attacker.positives, params.key, params.value)
+            end
             return true
         end
     else
@@ -259,7 +284,11 @@ end
 local function PositiveModifierWithSpeed(params)
     if params.isSelf then
         if params.attacker then
-            this.AddValue(params.data.attacker.positives, params.key, combat.CalculateDPS(params.value, params.speed))
+            if params.actived then
+                this.AddValue(params.data.attacker.actived.positives, params.key, combat.CalculateDPS(params.value, params.speed))
+            else
+                this.AddValue(params.data.attacker.positives, params.key, combat.CalculateDPS(params.value, params.speed))
+            end
             return true
         end
     else
@@ -276,7 +305,11 @@ end
 local function NegativeModifier(params)
     if params.isSelf then
         if params.attacker then
-            this.AddValue(params.data.attacker.negatives, params.key, params.value)
+            if params.actived then
+                this.AddValue(params.data.attacker.actived.negatives, params.key, params.value)
+            else
+                this.AddValue(params.data.attacker.negatives, params.key, params.value)
+            end
             return true
         end
     else
@@ -310,7 +343,11 @@ local function FortifyAttribute(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.attributes.fortify, params.attribute, params.value)
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.attributes.fortify, params.attribute, params.value)
+        else
+            this.AddValue(params.data.attacker.attributes.fortify, params.attribute, params.value)
+        end
     else
         this.AddValue(params.data.target.attributes.fortify, params.attribute, params.value)
     end
@@ -324,7 +361,11 @@ local function DamageAttribute(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        else
+            this.AddValue(params.data.attacker.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        end
     else
         this.AddValue(params.data.target.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
     end
@@ -338,7 +379,11 @@ local function DrainAttribute(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.attributes.drain, params.attribute, params.value)
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.attributes.drain, params.attribute, params.value)
+        else
+            this.AddValue(params.data.attacker.attributes.drain, params.attribute, params.value)
+        end
     else
         this.AddValue(params.data.target.attributes.drain, params.attribute, params.value)
     end
@@ -366,7 +411,11 @@ local function RestoreAttribute(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        else
+            this.AddValue(params.data.attacker.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        end
     else
         this.AddValue(params.data.target.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
     end
@@ -380,7 +429,11 @@ local function FortifySkill(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.skills.fortify, params.skill, params.value)
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.skills.fortify, params.skill, params.value)
+        else
+            this.AddValue(params.data.attacker.skills.fortify, params.skill, params.value)
+        end
     else
         this.AddValue(params.data.target.skills.fortify, params.skill, params.value)
     end
@@ -394,7 +447,11 @@ local function DamageSkill(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
+        else
+            this.AddValue(params.data.attacker.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
+        end
     else
         this.AddValue(params.data.target.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
     end
@@ -408,7 +465,11 @@ local function DrainSkill(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.skills.drain, params.skill, params.value)
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.skills.drain, params.skill, params.value)
+        else
+            this.AddValue(params.data.attacker.skills.drain, params.skill, params.value)
+        end
     else
         this.AddValue(params.data.target.skills.drain, params.skill, params.value)
     end
@@ -436,7 +497,11 @@ local function RestoreSkill(params)
         return false
     end
     if params.isSelf then
-        this.AddValue(params.data.attacker.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
+        else
+            this.AddValue(params.data.attacker.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
+        end
     else
         this.AddValue(params.data.target.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
     end
