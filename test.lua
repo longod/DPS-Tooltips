@@ -66,7 +66,8 @@ function Test.Run(self, shutdown)
 
     unitwind:start("DPSTooltips")
 
-    dps:RunTest(unitwind)
+    -- dps:RunTest(unitwind)
+    require("longod.DPSTooltips.effect"):RunTest(unitwind)
 
     unitwind:finish()
 

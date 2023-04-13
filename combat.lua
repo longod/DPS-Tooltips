@@ -8,6 +8,19 @@ local this = {}
 
 -- TODO test
 
+---@param m number
+---@return number
+function this.InverseNormalizeMagnitude(m)
+    return math.max(100.0 - m, 0) / 100.0
+end
+
+---@param damage number
+---@param speed number
+---@return number
+function this.CalculateDPS(damage, speed)
+    return damage * speed
+end
+
 ---@param weaponDamage number
 ---@param strengthModifier number
 ---@param conditionModifier number
