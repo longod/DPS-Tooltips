@@ -103,7 +103,7 @@ end
 ---@param weapon tes3weapon
 ---@return boolean
 function DPS.CanCastOnStrike(self, weapon)
-    return self.rangedWeaponCanCastOnSTrike or weapon.isRanged == false
+    return self.rangedWeaponCanCastOnSTrike or weapon.isMelee or weapon.isProjectile
 end
 
 ---@param data ScratchData
@@ -337,7 +337,6 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armo
     return baseDamage
 end
 
--- TODO rename
 -- TODO useBestAttack timing is too late, should be base damage phase. but results almost same
 ---@param weaponDamages { [tes3.physicalAttackType]: DamageRange }
 ---@param minmaxRange boolean
@@ -524,14 +523,17 @@ end
 
 ---@param e Modifier
 ---@param t tes3.attribute
----@param attributes tes3statistic[]
+---@param attributes tes3statistic[]?
 ---@return number
 local function GetModifiedAttribute(e, t, attributes)
-    local current = attributes[t + 1].current
+    local current = 0
+    if attributes then
+        current = current + attributes[t + 1].current
+    end
 
     -- avoid double applied
     if e.actived then
-        current = GetModifiedAttribute(e.actived, t, attributes)
+        current = current + GetModifiedAttribute(e.actived, t, nil)
     end
 
     if e.attributes.damage[t] then
@@ -557,21 +559,24 @@ local function GetModifiedAttribute(e, t, attributes)
         current = current + e.attributes.fortify[t]
     end
     if e.attributes.absorb[t] then
-        current = current - e.attributes.absorb[t] -- HACK attacker's sign must be negative
+        current = current - e.attributes.absorb[t] -- attacker's sign must be negative
     end
     return current
 end
 
 ---@param e Modifier
 ---@param t tes3.skill
----@param skills tes3statisticSkill[]
+---@param skills tes3statisticSkill[]?
 ---@return number
 local function GetModifiedSkill(e, t, skills)
-    local current = skills[t + 1].current
+    local current = 0
+    if skills then
+        current = current + skills[t + 1].current
+    end
 
     -- avoid double applied
     if e.actived then
-        current = GetModifiedAttribute(e.actived, t, skills)
+        current = current + GetModifiedSkill(e.actived, t, nil)
     end
 
     if e.skills.damage[t] then
@@ -591,15 +596,64 @@ local function GetModifiedSkill(e, t, skills)
         current = current + e.skills.fortify[t]
     end
     if e.skills.absorb[t] then
-        current = current - e.skills.absorb[t] -- HACK attacker's sign must be negative
+        current = current - e.skills.absorb[t] -- attacker's sign must be negative
+    end
+    return current
+end
+
+---@param e Modifier
+---@param t tes3.effectAttribute
+---@param effects number[]?
+---@return number
+local function GetModifiedEffects(e, t, effects)
+
+    local current = 0
+    if effects then
+        current = current + effects[t + 1]
+    end
+
+    -- avoid double applied
+    if e.actived then
+        current = current + GetModifiedEffects(e.actived, t, nil)
+    end
+
+    -- map tes3.effectAttribute to tes3.effect
+    -- TODO consider use effectAttribute on scratch destination
+    local map = {
+        [tes3.effectAttribute.attackBonus] = tes3.effect.fortifyAttack,
+        [tes3.effectAttribute.sanctuary] = tes3.effect.sanctuary,
+        [tes3.effectAttribute.resistMagicka] = tes3.effect.resistMagicka,
+        [tes3.effectAttribute.resistFire] = tes3.effect.resistFire,   -- and fire shield
+        [tes3.effectAttribute.resistFrost] = tes3.effect.resistFrost, -- and frost shield
+        [tes3.effectAttribute.resistShock] = tes3.effect.resistShock, -- and lighting shield
+        [tes3.effectAttribute.resistPoison] = tes3.effect.resistPoison,
+        [tes3.effectAttribute.resistParalysis] = tes3.effect.resistParalysis,
+        [tes3.effectAttribute.chameleon] = tes3.effect.chameleon,
+        [tes3.effectAttribute.resistNormalWeapons] = tes3.effect.resistNormalWeapons,
+        [tes3.effectAttribute.shield] = tes3.effect.shield,
+        [tes3.effectAttribute.blind] = tes3.effect.blind,
+        [tes3.effectAttribute.paralyze] = tes3.effect.paralyze,
+        [tes3.effectAttribute.invisibility] = tes3.effect.invisibility,
+    }
+
+    local id = map[t];
+    if id then
+        if e.resists and e.resists[id] then -- prior
+            -- including resist, shield, weakness (effective)
+            current = current + resolver.GetValue(e.resists, id, 0);
+        else
+            current = current + resolver.GetValue(e.positives, id, 0);
+            current = current - resolver.GetValue(e.negatives, id, 0);
+        end
     end
     return current
 end
 
 ---@param effect ScratchData
 local function GetTargetArmorRating(effect)
-    local shield = resolver.GetValue(effect.target.positives, tes3.effect.shield, 0);
-    return shield -- currently only shield effect
+    -- currently only shield effect
+    local shield = GetModifiedEffects(effect.target, tes3.effectAttribute.shield, nil)
+    return shield
 end
 
 -- local function GetModifiedCurrentFatigue(e, t, fatigue)
@@ -660,8 +714,8 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         end
     end
 
-    -- TODO this resist magicka should ignore applied effect from this weapon
-    local resistMagicka = tes3.mobilePlayer.resistMagicka
+    local resistMagicka = GetModifiedEffects(effect.attacker, tes3.effectAttribute.resistMagicka,
+    tes3.mobilePlayer.effectAttributes)
     ResolveModifiers(effect, icons, resistMagicka)
 
     -- TODO icons

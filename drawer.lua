@@ -236,6 +236,7 @@ function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
                 -- TODO It would be better to consider the layout. display before or after for
                 -- FIXME there are duplicate id's between physicalAttackType and effect, it can either separate the table,
                 -- or fortunately it is not covered by the damage type, so can repackage it into a new one instead of using the icon table all over again.
+                -- or use negative physicalAttackType for key
                 --self:DisplayIcons(block, data, self.idWeaponIcon, k)
 
                 -- label
