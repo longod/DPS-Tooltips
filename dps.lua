@@ -359,7 +359,7 @@ local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
         typeDamages[k] = typeDamage
     end
     for k, v in pairs(typeDamages) do
-        if highest == v then -- lua can compare float equals?
+        if combat.NearyEqual(highest, v) then
             highestType[k] = true
         end
     end
@@ -418,12 +418,12 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     local wm = tes3.effect.weaknesstoMagicka
     -- Once Resist Magicka reaches 100%, it's the only type of resistance that can't be broken by a Weakness effect, since Weakness is itself a magicka type spell.
     -- so if both apply, above works?
-    local targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.positives, rm, 0))
-    targetResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.target.negatives, wm, 0)) *
+    local targetResistMagicka = combat.InverseNormalize(resolver.GetValue(effect.target.positives, rm, 0))
+    targetResistMagicka = combat.InverseNormalize(resolver.GetValue(effect.target.negatives, wm, 0)) *
         targetResistMagicka
-    local attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.positives, rm, 0) +
+    local attackerResistMagicka = combat.InverseNormalize(resolver.GetValue(effect.attacker.positives, rm, 0) +
         resistMagicka)
-    attackerResistMagicka = combat.InverseNormalizeMagnitude(resolver.GetValue(effect.attacker.negatives, wm, 0)) *
+    attackerResistMagicka = combat.InverseNormalize(resolver.GetValue(effect.attacker.negatives, wm, 0)) *
         attackerResistMagicka
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
@@ -443,8 +443,8 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     -- probability
     -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
     -- local reflectChance = resolver.GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
-    --     resolver.GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
-    -- local dispelChance = InverseNormalizeMagnitude(resolver.GetValue(effect.target.positives, tes3.effect.dispel, 0))
+    -- resolver.GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
+    -- local dispelChance = InverseNormalize(resolver.GetValue(effect.target.positives, tes3.effect.dispel, 0))
 
     -- merge resist/weakness elemental and shield
     local resistweakness = {
@@ -462,7 +462,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
             MergeIcons(icons, k, v[2])
         end
         resist = resist - resolver.GetValue(effect.target.negatives, v[1], 0)
-        effect.target.resists[k] = combat.InverseNormalizeMagnitude(resist)
+        effect.target.resists[k] = combat.InverseNormalize(resist)
 
         MergeIcons(icons, k, v[1])
     end
@@ -618,15 +618,14 @@ local function GetModifiedEffects(e, t, effects)
     end
 
     -- map tes3.effectAttribute to tes3.effect
-    -- TODO consider use effectAttribute on scratch destination
     local map = {
         [tes3.effectAttribute.attackBonus] = tes3.effect.fortifyAttack,
         [tes3.effectAttribute.sanctuary] = tes3.effect.sanctuary,
         [tes3.effectAttribute.resistMagicka] = tes3.effect.resistMagicka,
-        [tes3.effectAttribute.resistFire] = tes3.effect.resistFire,   -- and fire shield
-        [tes3.effectAttribute.resistFrost] = tes3.effect.resistFrost, -- and frost shield
-        [tes3.effectAttribute.resistShock] = tes3.effect.resistShock, -- and lighting shield
-        [tes3.effectAttribute.resistPoison] = tes3.effect.resistPoison,
+        [tes3.effectAttribute.resistFire] = tes3.effect.resistFire,   -- and fire shield, weakness in .resists
+        [tes3.effectAttribute.resistFrost] = tes3.effect.resistFrost, -- and frost shield, weakness in .resists
+        [tes3.effectAttribute.resistShock] = tes3.effect.resistShock, -- and lighting shield, weakness in .resists
+        [tes3.effectAttribute.resistPoison] = tes3.effect.resistPoison, -- and weakness in .resists
         [tes3.effectAttribute.resistParalysis] = tes3.effect.resistParalysis,
         [tes3.effectAttribute.chameleon] = tes3.effect.chameleon,
         [tes3.effectAttribute.resistNormalWeapons] = tes3.effect.resistNormalWeapons,

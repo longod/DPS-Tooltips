@@ -8,23 +8,57 @@ function Test.new()
     return test
 end
 
----@param self Test
 ---@param shutdown boolean?
-function Test.Run(self, shutdown)
+function Test.Run(shutdown)
     ---@diagnostic disable: need-check-nil
     local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
     local dps = require("longod.DPSTooltips.dps").new(config)
+    local combat = require("longod.DPSTooltips.combat")
     local logger = require("longod.DPSTooltips.logger")
 
     local unitwind = require("unitwind").new {
         enabled = true,
         beforeAll = function()
-            dps:Initialize()
         end,
     }
 
-    -- global mock
+    -- add equality for floating point error
+    ---@param result any #The result to check
+    ---@param epsilon number?
+    ---@return UnitWind.expects #An object with functions to perform expectations on the result
+    function unitwind.approxExpect(self, result, epsilon)
+        local expectTypes = {
+            toBe = function(expectedResult, isNot)
+                if not self.enabled then return false end
+                if (type(result) == "number") then
+                    if (combat.NearyEqual(result, expectedResult, epsilon)) == isNot then
+                        error(string.format("Expected value to %sbe %s, got: %s.", isNot and "not " or "", expectedResult,
+                            result))
+                    end
+                else
+                    -- fallback
+                    return self:expect(result).toBe(expectedResult, isNot)
+                end
+                return true
+            end,
+        }
+        ---@type UnitWind.expects
+        local expects = {}
+        ---@type UnitWind.expects.NOT
+        expects.NOT = {}
+        for expectType, func in pairs(expectTypes) do
+            expects[expectType] = function(...)
+                return func(..., false)
+            end
+            expects.NOT[expectType] = function(...)
+                return func(..., true)
+            end
+        end
+        return expects
+    end
+
     -- TODO switch case true/false
+    --[[
     unitwind:mock(tes3, "findGMST", function(id)
         if id == tes3.gmst.fDamageStrengthBase then
             return { value = 0.5 }
@@ -63,13 +97,14 @@ function Test.Run(self, shutdown)
         return false
     end)
     -- TODO tes3.mobilePlayer, tes3.worldController
+    ]]--
 
-    unitwind:start("DPSTooltips")
 
-    -- dps:RunTest(unitwind)
+    require("longod.DPSTooltips.combat"):RunTest(unitwind)
     require("longod.DPSTooltips.effect"):RunTest(unitwind)
 
-    unitwind:finish()
+    
+    --dps:Initialize()
 
     if shutdown then
         logger:debug("Shutdown")

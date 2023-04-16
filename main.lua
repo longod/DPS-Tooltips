@@ -1,5 +1,5 @@
 ----[[ unittest
-require("longod.DPSTooltips.test").new():Run(false)
+require("longod.DPSTooltips.test").new().Run(false)
 --]]--
 
 local config = require("longod.DPSTooltips.config").Load()

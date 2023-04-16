@@ -65,7 +65,6 @@ function this.CreateScratchData()
                 fortify = {},
             },
             resists = {},
-
             actived = {
                 positives = {},
                 negatives = {},
@@ -159,10 +158,10 @@ local attributeFilter = {
 ---@class SkillFilter
 ---@field [tes3.skill] FilterFlag
 local skillFilter = {
-    [tes3.skill.block] = { attacker =false, target = true  },
+    [tes3.skill.block] = { attacker = false, target = true },
     [tes3.skill.armorer] = { attacker = false, target = false },
-    [tes3.skill.mediumArmor] = { attacker =false, target = true },
-    [tes3.skill.heavyArmor] = { attacker =false, target = true },
+    [tes3.skill.mediumArmor] = { attacker = false, target = true },
+    [tes3.skill.heavyArmor] = { attacker = false, target = true },
     [tes3.skill.bluntWeapon] = { attacker = true, target = false },
     [tes3.skill.longBlade] = { attacker = true, target = false },
     [tes3.skill.axe] = { attacker = true, target = false },
@@ -180,7 +179,7 @@ local skillFilter = {
     [tes3.skill.security] = { attacker = false, target = false },
     [tes3.skill.sneak] = { attacker = false, target = false },
     [tes3.skill.acrobatics] = { attacker = false, target = false },
-    [tes3.skill.lightArmor] = { attacker =false, target = true },
+    [tes3.skill.lightArmor] = { attacker = false, target = true },
     [tes3.skill.shortBlade] = { attacker = true, target = false },
     [tes3.skill.marksman] = { attacker = true, target = false },
     [tes3.skill.mercantile] = { attacker = false, target = false },
@@ -285,7 +284,8 @@ local function PositiveModifierWithSpeed(params)
     if params.isSelf then
         if params.attacker then
             if params.actived then
-                this.AddValue(params.data.attacker.actived.positives, params.key, combat.CalculateDPS(params.value, params.speed))
+                this.AddValue(params.data.attacker.actived.positives, params.key,
+                combat.CalculateDPS(params.value, params.speed))
             else
                 this.AddValue(params.data.attacker.positives, params.key, combat.CalculateDPS(params.value, params.speed))
             end
@@ -328,7 +328,7 @@ local function MultModifier(params)
     if params.isSelf then
     else
         if params.target then
-            this.MulValue(params.data.target.positives, params.key, combat.InverseNormalizeMagnitude(params.value))
+            this.MulValue(params.data.target.positives, params.key, combat.InverseNormalize(params.value))
             return true
         end
     end
@@ -362,12 +362,15 @@ local function DamageAttribute(params)
     end
     if params.isSelf then
         if params.actived then
-            this.AddValue(params.data.attacker.actived.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.actived.attributes.damage, params.attribute,
+            combat.CalculateDPS(params.value, params.speed))
         else
-            this.AddValue(params.data.attacker.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.attributes.damage, params.attribute,
+            combat.CalculateDPS(params.value, params.speed))
         end
     else
-        this.AddValue(params.data.target.attributes.damage, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        this.AddValue(params.data.target.attributes.damage, params.attribute,
+        combat.CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -412,12 +415,15 @@ local function RestoreAttribute(params)
     end
     if params.isSelf then
         if params.actived then
-            this.AddValue(params.data.attacker.actived.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.actived.attributes.restore, params.attribute,
+            combat.CalculateDPS(params.value, params.speed))
         else
-            this.AddValue(params.data.attacker.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.attributes.restore, params.attribute,
+            combat.CalculateDPS(params.value, params.speed))
         end
     else
-        this.AddValue(params.data.target.attributes.restore, params.attribute, combat.CalculateDPS(params.value, params.speed))
+        this.AddValue(params.data.target.attributes.restore, params.attribute,
+        combat.CalculateDPS(params.value, params.speed))
     end
     return true
 end
@@ -448,9 +454,11 @@ local function DamageSkill(params)
     end
     if params.isSelf then
         if params.actived then
-            this.AddValue(params.data.attacker.actived.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.actived.skills.damage, params.skill,
+            combat.CalculateDPS(params.value, params.speed))
         else
-            this.AddValue(params.data.attacker.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.skills.damage, params.skill,
+            combat.CalculateDPS(params.value, params.speed))
         end
     else
         this.AddValue(params.data.target.skills.damage, params.skill, combat.CalculateDPS(params.value, params.speed))
@@ -498,9 +506,11 @@ local function RestoreSkill(params)
     end
     if params.isSelf then
         if params.actived then
-            this.AddValue(params.data.attacker.actived.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.actived.skills.restore, params.skill,
+            combat.CalculateDPS(params.value, params.speed))
         else
-            this.AddValue(params.data.attacker.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
+            this.AddValue(params.data.attacker.skills.restore, params.skill,
+            combat.CalculateDPS(params.value, params.speed))
         end
     else
         this.AddValue(params.data.target.skills.restore, params.skill, combat.CalculateDPS(params.value, params.speed))
@@ -672,6 +682,8 @@ end
 ---@param self EffectResolver
 ---@param unitwind UnitWind
 function this.RunTest(self, unitwind)
+    unitwind:start("DPSTooltips.effect")
+
     ---@diagnostic disable: need-check-nil
     unitwind:test("Empty", function()
         local r = self.Get(tes3.effect.detectAnimal)
@@ -1188,7 +1200,7 @@ function this.RunTest(self, unitwind)
             end
             params.isSelf = true
             affect = r.func(params)
-            unitwind:expect(affect).toBe(false) -- self absorb is no affect
+            unitwind:expect(affect).toBe(false)         -- self absorb is no affect
             params.weaponSkillId = tes3.skill.unarmored -- mismatch
             affect = r.func(params)
             unitwind:expect(affect).toBe(false)
@@ -1230,6 +1242,8 @@ function this.RunTest(self, unitwind)
             unitwind:expect(affect).toBe(false)
         end
     end)
+
+    unitwind:finish()
 end
 
 return this
