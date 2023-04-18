@@ -1,32 +1,33 @@
----@class DPS
----@field config Config
----@field fFatigueBase number
----@field fFatigueMult number
----@field fCombatInvisoMult number
----@field fSwingBlockBase number
----@field fSwingBlockMult number
----@field fBlockStillBonus number
----@field iBlockMinChance number
----@field iBlockMaxChance number
----@field fCombatArmorMinMult number
----@field fDifficultyMult number
----@field fDamageStrengthBase number
----@field fDamageStrengthMult number
----@field restoreDrainAttributesFix boolean
----@field blindFix integer
----@field rangedWeaponCanCastOnSTrike boolean
----@field throwWeaponAlreadyModified boolean
----@field poisonCrafting PoisonCrafting
+--- @module '"dps"'
+--- @diagnostic disable: need-check-nil, assign-type-mismatch, undefined-global, undefined-field, undefined-doc-name
+
+--- The DPS module provides various functions related to combat and damage-per-second calculations.
+--- @class DPS
+--- @field config Config A configuration object for the module.
+--- @field fFatigueBase number The base value for the fatigue term in hit rate calculations.
+--- @field fFatigueMult number The multiplier for the fatigue term in hit rate calculations.
+--- @field fCombatInvisoMult number The multiplier for the invisibility modifier in hit rate calculations.
+--- @field fSwingBlockBase number The base value for the swing block modifier in hit rate calculations.
+--- @field fSwingBlockMult number The multiplier for the swing block modifier in hit rate calculations.
+--- @field fBlockStillBonus number The still bonus for the block chance calculation.
+--- @field iBlockMinChance number The minimum block chance value.
+--- @field iBlockMaxChance number The maximum block chance value.
+--- @field fCombatArmorMinMult number The minimum damage reduction multiplier for armor.
+--- @field fDifficultyMult number The difficulty multiplier for damage calculations.
+--- @field fDamageStrengthBase number The base value for the damage strength modifier.
+--- @field fDamageStrengthMult number The multiplier for the damage strength modifier.
+--- @field restoreDrainAttributesFix boolean A flag indicating whether the restore/drain attributes fix is enabled.
+--- @field blindFix integer An integer value for the blind modifier fix.
+--- @field rangedWeaponCanCastOnSTrike boolean A flag indicating whether ranged weapons can cast on strike.
+--- @field throwWeaponAlreadyModified boolean A flag indicating whether thrown weapons have already been modified.
+--- @field poisonCrafting PoisonCrafting A module providing functions for crafting poisons.
 local DPS = {}
 
----@param cfg Config?
----@return DPS
+--- Creates a new instance of the DPS module.
+--- @param cfg Config? An optional configuration object to use for the module.
+--- @return DPS @The newly created instance of the DPS module.
 function DPS.new(cfg)
-    local dps = {
-        config = cfg and cfg or require("longod.DPSTooltips.config").Load()
-    }
-    setmetatable(dps, { __index = DPS })
-    return dps
+    return setmetatable({ config = cfg or require("longod.DPSTooltips.config").Load() }, { __index = DPS })
 end
 
 local logger = require("longod.DPSTooltips.logger")
@@ -35,9 +36,6 @@ local resolver = require("longod.DPSTooltips.effect")
 
 ---@param self DPS
 function DPS.Initialize(self)
-    -- move gmst values to combat?
-    ---@diagnostic disable: need-check-nil
-    ---@diagnostic disable: assign-type-mismatch
     self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value
     self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value
     self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value
@@ -121,10 +119,7 @@ local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, 
             local r = resolver.Get(id)
             if r then
                 local value = (effect.max + effect.min) * 0.5 -- uniform RNG average
-                local isSelf = effect.rangeType == tes3.effectRange.self
-                if forceTargetEffects then
-                    isSelf = false
-                end
+                local isSelf = forceTargetEffects and effect.rangeType == tes3.effectRange.self
                 ---@type Params
                 local params = {
                     data = data,
@@ -174,12 +169,12 @@ local function CollectEnchantmentEffect(data, icons, enchantment, weaponSpeed, c
     return data, icons
 end
 
--- avoid double applied
----@param data ScratchData
----@param activeMagicEffectList tes3activeMagicEffect[]
----@param weapon tes3weapon
----@param canCastOnStrike boolean
----@return ScratchData
+--- This function collects the active magic effects on the player that are related to the weapon's enchantment and adds them to the given ScratchData object.
+--- @param data ScratchData The ScratchData object to collect the active magic effects for.
+--- @param activeMagicEffectList tes3activeMagicEffect[] The list of active magic effects on the player.
+--- @param weapon tes3weapon The weapon to collect the active magic effects for.
+--- @param canCastOnStrike boolean Whether the weapon's enchantment can be cast on strike.
+--- @return ScratchData The updated ScratchData object.
 local function CollectActiveMagicEffect(data, activeMagicEffectList, weapon, canCastOnStrike)
     if weapon.enchantment and activeMagicEffectList then
         local onStrike = canCastOnStrike and weapon.enchantment.castType == tes3.enchantmentType.onStrike
@@ -218,19 +213,19 @@ local function CollectActiveMagicEffect(data, activeMagicEffectList, weapon, can
     return data
 end
 
----@param self DPS
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param sanctuary number
----@param chameleon number
----@param invisibility boolean
----@param isKnockedDown boolean
----@param isParalyzed boolean
----@param unware boolean
----@return number
-function DPS.CalculateEvasion(self, agility, luck, fatigueTerm, sanctuary, chameleon, invisibility, isKnockedDown,
-                              isParalyzed, unware)
+--- This function calculates the evasion score for a character based on their agility, luck, fatigue, and various effects such as sanctuary and chameleon.
+--- @param self DPS The DPS object to calculate the evasion score for.
+--- @param agility number The character's agility stat.
+--- @param luck number The character's luck stat.
+--- @param fatigueTerm number The character's fatigue term.
+--- @param sanctuary number The character's sanctuary effect value.
+--- @param chameleon number The character's chameleon effect value.
+--- @param invisibility boolean Whether the character is currently invisible.
+--- @param isKnockedDown boolean Whether the character is currently knocked down.
+--- @param isParalyzed boolean Whether the character is currently paralyzed.
+--- @param unware boolean Whether the character is currently unaware of their surroundings.
+--- @return number The character's evasion score.
+function DPS.CalculateEvasion(self, agility, luck, fatigueTerm, sanctuary, chameleon, invisibility, isKnockedDown, isParalyzed, unware)
     local evasion = 0
     if not (isKnockedDown or isParalyzed or unware) then
         evasion = combat.CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
@@ -245,27 +240,24 @@ end
 ---@param itemData tes3itemData
 ---@return number
 local function GetConditionModifier(weapon, itemData)
-    -- Projectiles (thrown weapons, arrows, bolts) have no condition data.
-    local hasDurability = weapon.hasDurability
-    local maximumCondition = (hasDurability and weapon.maxCondition) or 1.0
-    local currentCondition = (hasDurability and itemData and itemData.condition) or maximumCondition
-    return currentCondition / maximumCondition
+    local maxCond = weapon.hasDurability and weapon.maxCondition or 1.0
+    local currCond = weapon.hasDurability and (itemData and itemData.condition or maxCond) or maxCond
+    return currCond / maxCond
 end
 
--- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
----@param self DPS
----@param strength number
----@return number
+--- Returns the strength modifier for calculating weapon damage based on the given strength value.
+--- @param self DPS The DPS module.
+--- @param strength number The strength value to calculate the modifier for.
+--- @return number @The strength modifier for weapon damage calculations.
+--- See [Accurate Tooltip Stats](https://www.nexusmods.com/morrowind/mods/51354) by [Necrolesian](https://www.nexusmods.com/users/70336838).
 function DPS.GetStrengthModifier(self, strength)
-    -- how capped value without mcp patch?
     local currentStrength = math.max(strength, 0)
-    -- resolved base and mult on initialize
     return self.fDamageStrengthBase + (self.fDamageStrengthMult * currentStrength)
 end
 
----@class DamageRange
----@field min number
----@field max number
+--- @class DamageRange: table
+--- @field min number
+--- @field max number
 
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
 ---@param self DPS
@@ -359,7 +351,7 @@ local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
         typeDamages[k] = typeDamage
     end
     for k, v in pairs(typeDamages) do
-        if combat.NearyEqual(highest, v) then
+        if combat.NearlyEqual(highest, v) then
             highestType[k] = true
         end
     end
@@ -571,72 +563,19 @@ local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
     return current
 end
 
----@param e Modifier
----@param t tes3.skill
----@param skills tes3statisticSkill[]?
----@param restoreDrainAttributesFix boolean
----@return number
-local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
-    local current = 0
-    if skills then
-        current = current + skills[t + 1].current
-    end
-
-    -- avoid double applied
-    if e.actived then
-        current = current + GetModifiedSkill(e.actived, t, nil, restoreDrainAttributesFix)
-    end
-
-    if e.skills.damage[t] then
-        current = current - e.skills.damage[t]
-    end
-    
-    if restoreDrainAttributesFix then
-        if e.skills.restore[t] then -- can restore drained value?
-            local base = skills[t + 1].base
-            local decreased = math.max(base - current, 0)
-            current = current + math.min(e.skills.restore[t], 0)
-        end
-        if e.skills.fortify[t] then
-            current = current + e.skills.fortify[t]
-        end
-    else
-        if e.skills.fortify[t] then
-            current = current + e.skills.fortify[t]
-        end
-        if e.skills.restore[t] then         -- can restore drained value?
-            local base = skills[t + 1].base
-            local decreased = math.max(base - current, 0)
-            current = current + math.min(e.skills.restore[t], 0)
-        end
-    end
-
-    if e.skills.drain[t] then
-        current = current - e.skills.drain[t] -- at once
-    end
-    if e.skills.absorb[t] then
-        current = current - e.skills.absorb[t] -- attacker's sign must be negative
-    end
-    return current
-end
-
----@param e Modifier
----@param t tes3.effectAttribute
----@param effects number[]?
----@return number
+--- This function calculates the modified effects for a given modifier and effect attribute. It returns the total modified effects for the specified attribute.
+--- @param e Modifier The modifier to calculate the modified effects for.
+--- @param t tes3.effectAttribute The effect attribute to calculate the modified effects for.
+--- @param effects number[]? An optional array of effect values to include in the calculation.
+--- @return number @The total modified effects for the specified attribute.
 local function GetModifiedEffects(e, t, effects)
-
     local current = 0
     if effects then
         current = current + effects[t + 1]
     end
-
-    -- avoid double applied
     if e.actived then
         current = current + GetModifiedEffects(e.actived, t, nil)
     end
-
-    -- map tes3.effectAttribute to tes3.effect
     local map = {
         [tes3.effectAttribute.attackBonus] = tes3.effect.fortifyAttack,
         [tes3.effectAttribute.sanctuary] = tes3.effect.sanctuary,
@@ -653,11 +592,9 @@ local function GetModifiedEffects(e, t, effects)
         [tes3.effectAttribute.paralyze] = tes3.effect.paralyze,
         [tes3.effectAttribute.invisibility] = tes3.effect.invisibility,
     }
-
     local id = map[t];
     if id then
-        if e.resists and e.resists[id] then -- prior
-            -- including resist, shield, weakness (effective)
+        if e.resists and e.resists[id] then
             current = current + resolver.GetValue(e.resists, id, 0);
         else
             current = current + resolver.GetValue(e.positives, id, 0);
@@ -667,52 +604,31 @@ local function GetModifiedEffects(e, t, effects)
     return current
 end
 
----@param effect ScratchData
+--- This function returns the armor rating of the target affected by the given effect.
+--- @param effect ScratchData The ScratchData object containing the effect to determine the target armor rating for.
+--- @return number @The armor rating of the target.
 local function GetTargetArmorRating(effect)
-    -- currently only shield effect
-    local shield = GetModifiedEffects(effect.target, tes3.effectAttribute.shield, nil)
-    return shield
+    return GetModifiedEffects(effect.target, tes3.effectAttribute.shield, nil)
 end
 
--- local function GetModifiedCurrentFatigue(e, t, fatigue)
--- end
--- local function GetModifiedMaxFatigue(e, t, fatigue)
--- end
+--- @class DPSData
+--- @field weaponDamageRange table
+--- @field weaponDamages table
+--- @field highestType { [tes3.physicalAttackType]: boolean }
+--- @field effectTotal number
+--- @field effectDamages { [tes3.effect]: number }
+--- @field icons { [tes3.effect]: string[] }
 
--- local function CalculateHitRate_(weapon, effect)
---     local skillId = weapon.skillId
---     local weaponSkill = math.max(tes3.mobilePlayer:getSkillValue(skillId) + GetModifiedSkill(effect.attacker, skillId), 0)
---     local agility = math.max(
---         tes3.mobilePlayer.agility.current + GetModifiedAttribute(effect.attacker, tes3.attribute.agility), 0)
---     local luck = math.max(tes3.mobilePlayer.luck.current + GetModifiedAttribute(effect.attacker, tes3.attribute.luck), 0)
---     -- return CalculateHitRate(weaponSkill, agility, luck, 0, 1, 0, 0)
--- end
-
--- local function CalculateEvasion_(weapon, effect)
--- end
-
--- local function CalculateHit(weapon, effect)
---     --return CalculateChanceToHit(hitRate, evasion)
--- end
-
-
----@class DPSData
----@field weaponDamageRange table
----@field weaponDamages table
----@field highestType { [tes3.physicalAttackType]: boolean }
----@field effectTotal number
----@field effectDamages { [tes3.effect]: number }
----@field icons { [tes3.effect]: string[] }
-
--- I'm not sure how to resolve Morrowind's effect strictly.
--- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
--- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
--- And Why do I not use tes3.getEffectMagnitude() or other useful functions? That's because it works for players, but cannot be used against a notional, nonexistent enemy.
----@param self DPS
----@param weapon tes3weapon
----@param itemData tes3itemData
----@param useBestAttack boolean
----@return DPSData
+--- This function calculates the DPS (damage per second) for a given weapon based on its attributes, effects, and enchantments.
+--- The order of resolving the effects is not clear, as applying them strictly from the top may cause some effects to have no effect at all.
+--- However, this function resolves all modifiers once and then applies them.
+--- Additionally, some useful functions like `tes3.getEffectMagnitude()` cannot be used against a hypothetical enemy, so they are not used here.
+---
+--- @param self DPS
+--- @param weapon tes3weapon The weapon to calculate DPS for.
+--- @param itemData tes3itemData Optional item data for the weapon.
+--- @param useBestAttack boolean Whether to use the best attack for the weapon.
+--- @return DPSData @A table containing the calculated DPS data.
 function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed -- TODO perhaps speed is scale factor, not acutal length
