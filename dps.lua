@@ -428,6 +428,7 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     effect.target.resists[rm] = targetResistMagicka
     effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
+    -- TODO perhaps resist magicka does not just multiply. more complex. willpower, luck and fatigue, fully resist is treat as probability
     -- TODO use acculate option? or remove opiton
     for k, v in pairs(effect.target.negatives) do
         if k ~= tes3.effect.weaknesstoMagicka then
@@ -524,8 +525,9 @@ end
 ---@param e Modifier
 ---@param t tes3.attribute
 ---@param attributes tes3statistic[]?
+---@param restoreDrainAttributesFix boolean
 ---@return number
-local function GetModifiedAttribute(e, t, attributes)
+local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
     local current = 0
     if attributes then
         current = current + attributes[t + 1].current
@@ -533,30 +535,35 @@ local function GetModifiedAttribute(e, t, attributes)
 
     -- avoid double applied
     if e.actived then
-        current = current + GetModifiedAttribute(e.actived, t, nil)
+        current = current + GetModifiedAttribute(e.actived, t, nil, restoreDrainAttributesFix)
     end
 
     if e.attributes.damage[t] then
         current = current - e.attributes.damage[t]
     end
 
-    -- TODO mcp fix or unfix
-    -- if your Strength has been damaged 25 points, but you're wearing the Right Fist of Randagulf (+20 Fortify), Restore Strength would only give you back 5 points. To get around this, remove the Fortify effect (in the above example, remove the gauntlet) before invoking the Restore effect.
-    -- This bug is fixed by the Morrowind Code Patch.
-
-    -- Restore attributes spells did not recognise Fortify effects when restoring. Take for example, a base agility of 50, fortified by +30 to 80. If your agility was damaged below 80, a Restore spell would only restore up to 50 and stop working. Restore attributes spells now restore up to your fully fortified amount.
-    -- The same problem occurred when Drain attributes spells expired. These should now restore the fortified attribute properly as well.
-
-    if e.attributes.restore[t] then -- can restore drained value?
-        local base = attributes[t + 1].base
-        local decreased = math.max(base - current, 0)
-        current = current + math.min(e.attributes.restore[t], decreased)
+    if restoreDrainAttributesFix then
+        if e.attributes.restore[t] then -- can restore drained value?
+            local base = attributes[t + 1].base
+            local decreased = math.max(base - current, 0)
+            current = current + math.min(e.attributes.restore[t], decreased)
+        end
+        if e.attributes.fortify[t] then
+            current = current + e.attributes.fortify[t]
+        end
+    else
+        if e.attributes.fortify[t] then
+            current = current + e.attributes.fortify[t]
+        end
+        if e.attributes.restore[t] then         -- can restore drained value?
+            local base = attributes[t + 1].base
+            local decreased = math.max(base - current, 0)
+            current = current + math.min(e.attributes.restore[t], decreased)
+        end
     end
+
     if e.attributes.drain[t] then
         current = current - e.attributes.drain[t] -- at once
-    end
-    if e.attributes.fortify[t] then
-        current = current + e.attributes.fortify[t]
     end
     if e.attributes.absorb[t] then
         current = current - e.attributes.absorb[t] -- attacker's sign must be negative
@@ -567,8 +574,9 @@ end
 ---@param e Modifier
 ---@param t tes3.skill
 ---@param skills tes3statisticSkill[]?
+---@param restoreDrainAttributesFix boolean
 ---@return number
-local function GetModifiedSkill(e, t, skills)
+local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
     local current = 0
     if skills then
         current = current + skills[t + 1].current
@@ -576,24 +584,35 @@ local function GetModifiedSkill(e, t, skills)
 
     -- avoid double applied
     if e.actived then
-        current = current + GetModifiedSkill(e.actived, t, nil)
+        current = current + GetModifiedSkill(e.actived, t, nil, restoreDrainAttributesFix)
     end
 
     if e.skills.damage[t] then
         current = current - e.skills.damage[t]
     end
-    -- TODO mcp fix or unfix
-
-    if e.skills.restore[t] then -- can restore drained value?
-        local base = skills[t + 1].base
-        local decreased = math.max(base - current, 0)
-        current = current + math.min(e.skills.restore[t], 0)
+    
+    if restoreDrainAttributesFix then
+        if e.skills.restore[t] then -- can restore drained value?
+            local base = skills[t + 1].base
+            local decreased = math.max(base - current, 0)
+            current = current + math.min(e.skills.restore[t], 0)
+        end
+        if e.skills.fortify[t] then
+            current = current + e.skills.fortify[t]
+        end
+    else
+        if e.skills.fortify[t] then
+            current = current + e.skills.fortify[t]
+        end
+        if e.skills.restore[t] then         -- can restore drained value?
+            local base = skills[t + 1].base
+            local decreased = math.max(base - current, 0)
+            current = current + math.min(e.skills.restore[t], 0)
+        end
     end
+
     if e.skills.drain[t] then
         current = current - e.skills.drain[t] -- at once
-    end
-    if e.skills.fortify[t] then
-        current = current + e.skills.fortify[t]
     end
     if e.skills.absorb[t] then
         current = current - e.skills.absorb[t] -- attacker's sign must be negative
@@ -718,7 +737,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     ResolveModifiers(effect, icons, resistMagicka)
 
     -- TODO icons
-    local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes)
+    local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes, self.restoreDrainAttributesFix)
     local armorRating = GetTargetArmorRating(effect);
 
     local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, marksman)

@@ -1,4 +1,3 @@
--- TODO rename its not resolver
 ---@class EffectResolver
 local this = {}
 local combat = require("longod.DPSTooltips.combat")
