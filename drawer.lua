@@ -1,50 +1,48 @@
----@class GMSTName
----@field gmst number
----@field name string?
+--- @class GMSTName
+--- @field gmst number
+--- @field name string?
 
----@class PaletteColor
----@field palette string?
----@field color number[]?
+--- @class PaletteColor
+--- @field palette string?
+--- @field color number[]?
 
----@class NameTable
----@field [tes3.physicalAttackType|tes3.effect] GMSTName
+--- @class NameTable
+--- @field [tes3.physicalAttackType|tes3.effect] GMSTName
 
----@class ColorTable
----@field [tes3.effect] PaletteColor
+--- @class ColorTable
+--- @field [tes3.effect] PaletteColor
 
----@class Drawer
----@field config Config
----@field weaponNames NameTable
----@field effectNames NameTable
----@field colors ColorTable
----@field headerColor number[]
----@field weakColor number[]
----@field idDPSLabel number
----@field idBorder number
----@field idWeaponBlock number
----@field idWeaponIcon number
----@field idWeaponLabel number
----@field idEffectBlock number
----@field idEffectIcon number
----@field idEffectLabel number
----@field idPreDivider number
----@field idPostDivider number
+--- @class Drawer
+--- @field config Config
+--- @field weaponNames NameTable
+--- @field effectNames NameTable
+--- @field colors ColorTable
+--- @field headerColor number[]
+--- @field weakColor number[]
+--- @field idDPSLabel number
+--- @field idBorder number
+--- @field idWeaponBlock number
+--- @field idWeaponIcon number
+--- @field idWeaponLabel number
+--- @field idEffectBlock number
+--- @field idEffectIcon number
+--- @field idEffectLabel number
+--- @field idPreDivider number
+--- @field idPostDivider number
 local Drawer = {}
 
----@param cfg Config?
----@return Drawer
+--- Creates a new instance of the Drawer class.
+--- @param cfg Config? The configuration options for the drawer.
+--- @return Drawer @A new instance of the Drawer class.
 function Drawer.new(cfg)
-    local drawer = {
-        config = cfg and cfg or require("longod.DPSTooltips.config").Load()
-    }
-    setmetatable(drawer, { __index = Drawer })
-    return drawer
+    return setmetatable({ config = cfg or require("longod.DPSTooltips.config").Load() }, { __index = Drawer })
 end
 
 local logger = require("longod.DPSTooltips.logger")
 
----@param tbl table
----@param indent number?
+--- This function prints the contents of a Lua table to the logger, recursively if necessary.
+--- @param tbl table The table to print.
+--- @param indent number? The level of indentation for the table. Defaults to 0 if not specified.
 local function PrintTable(tbl, indent)
     if not indent then
         indent = 0
@@ -65,7 +63,8 @@ local function PrintTable(tbl, indent)
     end
 end
 
----@param self Drawer
+--- Initializes the Drawer object with default values and registers the UI element IDs used in the tooltip.
+--- @param self Drawer
 function Drawer.Initialize(self)
     self.weaponNames = {
         [tes3.physicalAttackType.slash] = { gmst = tes3.gmst.sSlash, name = nil },
@@ -212,10 +211,11 @@ function Drawer.DisplayDPS(self, element, data)
     label.color = self.headerColor
 end
 
----@param self Drawer
----@param element tes3uiElement
----@param data DPSData
----@param useBestAttack boolean
+--- Displays the weapon DPS in a UI element.
+--- @param self Drawer object.
+--- @param element tes3uiElement UI element to display the weapon DPS in.
+--- @param data DPSData table containing weapon damage information.
+--- @param useBestAttack boolean whether to only display the weapon with the highest DPS.
 function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
     local weaponOrder = {
         tes3.physicalAttackType.slash,
@@ -258,9 +258,10 @@ function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
     end
 end
 
----@param self Drawer
----@param element tes3uiElement
----@param data DPSData
+--- Displays the enchantment DPS in a UI element.
+--- @param self Drawer object.
+--- @param element tes3uiElement UI element to display the enchantment DPS in.
+--- @param data DPSData table containing enchantment damage information.
 function Drawer.DisplayEnchantmentDPS(self, element, data)
     local effectOrder = {
         tes3.effect.fireDamage,
@@ -294,28 +295,24 @@ function Drawer.DisplayEnchantmentDPS(self, element, data)
     end
 end
 
----@param self Drawer
----@param element tes3uiElement
----@param data DPSData
----@param useBestAttack boolean
+--- Displays the overall DPS and optional DPS breakdown in a UI element.
+--- @param self Drawer object.
+--- @param element tes3uiElement UI element to display the DPS in.
+--- @param data DPSData table containing damage information.
+--- @param useBestAttack boolean whether to only display the weapon with the highest DPS in the breakdown.
 function Drawer.Display(self, element, data, useBestAttack)
     if not data then
         return
     end
-
     self:DisplayStub(data)
-
     if not element then
         return
     end
-    
     if self.config.preDivider then
         local divider = element:createDivider({id = self.idPreDivider})
         divider.widthProportional = 0.85
     end
-
     self:DisplayDPS(element, data)
-
     if self.config.breakdown then
         local frame = element:createThinBorder({ id = self.idBorder })
         frame.flowDirection = "top_to_bottom"
@@ -324,21 +321,16 @@ function Drawer.Display(self, element, data, useBestAttack)
         frame.borderRight = 6
         frame.autoWidth = true
         frame.autoHeight = true
-        -- for children layout
         frame.paddingAllSides = 4
         frame.paddingLeft = 6
         frame.paddingRight = 6
-
         self:DisplayWeaponDPS(frame, data, useBestAttack)
         self:DisplayEnchantmentDPS(frame, data)
-        -- display non damage effect if need
     end
-
     if self.config.postDivider then
         local divider = element:createDivider({id = self.idPostDivider})
         divider.widthProportional = 0.85
     end
-
     element:updateLayout()
 end
 
