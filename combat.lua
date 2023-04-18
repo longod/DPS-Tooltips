@@ -1,67 +1,73 @@
--- in-game combat formula
--- https://en.uesp.net/wiki/Morrowind:Combat
--- https://wiki.openmw.org/index.php?title=Research:Common_Terms
--- https://wiki.openmw.org/index.php?title=Research:Combat
--- https://wiki.openmw.org/index.php?title=Research:Magic
----@class CombatFormula
+--- @module '"combat"'
+
+--- In-game combat formula.
+---
+--- References:
+--- - [Morrowind Combat](https://en.uesp.net/wiki/Morrowind:Combat)
+--- - [Common Terms Research](https://wiki.openmw.org/Research:Common_Terms)
+--- - [Combat Research](https://wiki.openmw.org/Research:Combat)
+--- - [Magic Research](https://wiki.openmw.org/Research:Magic)
+--- @class CombatFormula
 local this = {}
 
---- https://floating-point-gui.de/errors/comparison/
----@param a number
----@param b number
----@param epsilon number?
-function this.NearyEqual(a, b, epsilon)
+--- Determines if two numbers are nearly equal, up to a given epsilon value.
+--- @param a number The first number to compare.
+--- @param b number The second number to compare.
+--- @param epsilon number? An optional epsilon value that represents the maximum relative difference between the two numbers. Defaults to 0.00001 if not specified.
+--- @return boolean @True if the difference between the two numbers is within the epsilon value, false otherwise.
+function this.NearlyEqual(a, b, epsilon)
     local minNormal = 1.175494351e-38
     local maxValue = 3.402823466e+38
-    local e = epsilon and epsilon or 0.00001
+    local e = epsilon or 0.00001
     local absA = math.abs(a)
     local absB = math.abs(b)
     local diff = math.abs(a - b)
     if a == b then
-        -- shortcut, handles infinities
         return true
     elseif a == 0 or b == 0 or (absA + absB < minNormal) then
-        -- a or b is zero or both are extremely close to it
-        -- relative error is less meaningful here
         return diff < (e * minNormal)
     else
-        -- use relative error
         return diff / math.min(absA + absB, maxValue) < e
     end
 end
 
----@param m number
----@return number
+--- Normalizes a given value to a range between 0 and 1.
+--- @param m number The value to normalize.
+--- @return number @The normalized value, between 0 and 1.
 function this.Normalize(m)
     return math.max(m, 0) / 100.0
 end
 
----@param m number
----@return number
+--- Inverse normalizes a given value to a range between 0 and 1, where 0 corresponds to 100 and 1 corresponds to 0.
+--- @param m number The value to inverse normalize.
+--- @return number @The inverse normalized value, between 0 and 1.
 function this.InverseNormalize(m)
     return math.max(100.0 - m, 0) / 100.0
 end
 
----@param damage number
----@param speed number
----@return number
+--- Calculates the damage per second (DPS) of a weapon or attack.
+--- @param damage number The amount of damage dealt per hit.
+--- @param speed number The speed at which the weapon or attack is performed, in hits per second.
+--- @return number @The calculated DPS, which is the product of the damage and speed values.
 function this.CalculateDPS(damage, speed)
     return damage * speed
 end
 
----@param weaponDamage number
----@param strengthModifier number
----@param conditionModifier number
----@param criticalHitModifier number
----@return number
+--- Calculates the actual damage of a weapon attack based on various modifiers.
+--- @param weaponDamage number The base damage of the weapon.
+--- @param strengthModifier number The strength modifier of the attacker.
+--- @param conditionModifier number The condition modifier of the weapon.
+--- @param criticalHitModifier number The critical hit modifier of the attack.
+--- @return number @The calculated actual damage of the weapon attack.
 function this.CalculateAcculateWeaponDamage(weaponDamage, strengthModifier, conditionModifier, criticalHitModifier)
     return (weaponDamage * strengthModifier * conditionModifier * criticalHitModifier)
 end
 
----@param armorRating number
----@param damage number
----@param fCombatArmorMinMult number fCombatArmorMinMult
----@return number
+--- Calculates the damage reduction from a given armor rating and damage value.
+--- @param damage number The amount of damage to be reduced.
+--- @param armorRating number The armor rating that provides protection against the damage.
+--- @param fCombatArmorMinMult number The minimum damage reduction multiplier, expressed as a fraction of the damage value. Defaults to 1.0 if not specified.
+--- @return number @The calculated damage reduction from the armor rating.
 function this.CalculateDamageReductionFromArmorRating(damage, armorRating, fCombatArmorMinMult)
     return math.max(damage * math.max(damage / (damage + armorRating), fCombatArmorMinMult), 1.0)
 end
@@ -75,36 +81,41 @@ function this.CalculateFatigueTerm(currentFatigue, baseFatigue, fFatigueBase, fF
     return math.max(fFatigueBase - fFatigueMult * math.max(1.0 - currentFatigue / baseFatigue, 0.0), 0.0)
 end
 
----@param weaponSkill number
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param fortifyAttack number
----@param blind number
----@return number
+--- Calculates the hit rate of an attack based on various factors.
+--- @param weaponSkill number The weapon skill of the attacker.
+--- @param agility number The agility of the attacker.
+--- @param luck number The luck of the attacker.
+--- @param fatigueTerm number The fatigue term of the attacker, which affects their stamina and accuracy.
+--- @param fortifyAttack number The fortify attack modifier of the attack.
+--- @param blind number The blind modifier of the attack.
+--- @return number @The calculated hit rate of the attack, normalized to a range between 0 and 1.
 function this.CalculateHitRate(weaponSkill, agility, luck, fatigueTerm, fortifyAttack, blind)
     return this.Normalize((weaponSkill + (agility * 0.2) + (luck * 0.1)) * fatigueTerm + fortifyAttack - blind)
 end
 
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param sanctuary number
----@return number
+--- Calculates the evasion rate of a character based on various factors.
+--- @param agility number The agility of the character.
+--- @param luck number The luck of the character.
+--- @param fatigueTerm number The fatigue term of the character, which affects their stamina and accuracy.
+--- @param sanctuary number The sanctuary modifier of the character, which provides a chance to avoid damage.
+--- @return number @The calculated evasion rate of the character, normalized to a range between 0 and 1.
 function this.CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
     return this.Normalize(((agility * 0.2) + (luck * 0.1)) * fatigueTerm + math.min(sanctuary, 100))
 end
 
----@param hitRate number
----@param evation number
----@return number
-function this.CalculateChanceToHit(hitRate, evation)
-    return math.clamp(hitRate - evation, 0.0, 1.0)
+--- Calculates the chance to hit a target based on the attacker's hit rate and the target's evasion rate.
+--- @param hitRate number The hit rate of the attacker.
+--- @param evasion number The evasion rate of the target.
+--- @return number @The calculated chance to hit the target, clamped to a range between 0 and 1.
+function this.CalculateChanceToHit(hitRate, evasion)
+    return math.clamp(hitRate - evasion, 0.0, 1.0)
 end
 
+--- Runs a series of unit tests for the various combat-related functions.
+--- @param self table The module table.
+--- @param unitwind table The unit testing framework to use.
 function this.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.combat")
-
     unitwind:test("Normalize", function()
         unitwind:approxExpect(self.Normalize(100)).toBe(1.0) -- edge
         unitwind:approxExpect(self.Normalize(0)).toBe(0.0)   -- edge
@@ -148,7 +159,6 @@ function this.RunTest(self, unitwind)
         unitwind:approxExpect(self.CalculateChanceToHit(2.0, 0.5)).toBe(1.0) -- capped
         unitwind:approxExpect(self.CalculateChanceToHit(0.2, 0.7)).toBe(0.0) -- capped
     end)
-
     unitwind:finish()
 end
 
