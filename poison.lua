@@ -1,7 +1,8 @@
--- Poison Crafting
----@class PoisonCrafting
-local this ={}
+--- Provides a set of functions related to poison crafting.
+--- @class PoisonCrafting
+local this = {}
 
+--- Returns the tes3alchemy object associated with the given weapon.
 --- @param item tes3weapon
 --- @param itemData tes3itemData?
 --- @return tes3alchemy?
