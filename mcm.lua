@@ -144,7 +144,6 @@ function this.OnModConfigReady()
         variable = mwse.mcm.createTableVariable { id = "logLevel", table = data },
         callback = function(self)
             local logger = require("longod.DPSTooltips.logger")
-            ---@diagnostic disable: need-check-nil
             logger:setLogLevel(self.variable.value)
         end
     }
