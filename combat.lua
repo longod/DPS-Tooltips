@@ -1,4 +1,4 @@
---- @module '"combat"'
+--- @module '"longod.DPSTooltips.combat"'
 
 --- In-game combat formula.
 ---
