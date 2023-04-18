@@ -1,50 +1,43 @@
----@class Test
+--- @module '"longod.DPSTooltips.test"'
+
+--- @class Test
 local Test = {}
 
----@return Test
+--- Creates a new instance of the Test class.
+--- @return Test @A new instance of the Test class.
 function Test.new()
-    local test = {}
-    setmetatable(test, { __index = Test })
-    return test
+    return setmetatable({}, { __index = Test })
 end
 
----@param shutdown boolean?
+--- Runs the test suite for the DPS Tooltips mod.
+---@param shutdown boolean? If true, shuts down the program after running the test suite.
 function Test.Run(shutdown)
-    ---@diagnostic disable: need-check-nil
     local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
-    local dps = require("longod.DPSTooltips.dps").new(config)
     local combat = require("longod.DPSTooltips.combat")
     local logger = require("longod.DPSTooltips.logger")
+    local unitwind = require("unitwind").new({ enabled = true, beforeAll = function() end })
 
-    local unitwind = require("unitwind").new {
-        enabled = true,
-        beforeAll = function()
-        end,
-    }
-
-    -- add equality for floating point error
-    ---@param result any #The result to check
-    ---@param epsilon number?
-    ---@return UnitWind.expects #An object with functions to perform expectations on the result
+    --- Adds a new expectation method to the UnitWind library for performing floating point equality checks with an epsilon.
+    --- @param result any The result to check.
+    --- @param epsilon number? The acceptable error margin.
+    --- @return UnitWind.expects @An object with functions to perform expectations on the result.    
     function unitwind.approxExpect(self, result, epsilon)
         local expectTypes = {
             toBe = function(expectedResult, isNot)
                 if not self.enabled then return false end
                 if (type(result) == "number") then
-                    if (combat.NearyEqual(result, expectedResult, epsilon)) == isNot then
-                        error(string.format("Expected value to %sbe %s, got: %s.", isNot and "not " or "", expectedResult,
-                            result))
+                    if (combat.NearlyEqual(result, expectedResult, epsilon)) == isNot then
+                        error(string.format("Expected value to %sbe %s, got: %s.", isNot and "not " or "", expectedResult, result))
                     end
                 else
-                    -- fallback
                     return self:expect(result).toBe(expectedResult, isNot)
                 end
                 return true
             end,
         }
-        ---@type UnitWind.expects
+        --- @type UnitWind.expects
         local expects = {}
-        ---@type UnitWind.expects.NOT
+        --- @type UnitWind.expects.NOT
         expects.NOT = {}
         for expectType, func in pairs(expectTypes) do
             expects[expectType] = function(...)
@@ -57,8 +50,14 @@ function Test.Run(shutdown)
         return expects
     end
 
-    -- TODO switch case true/false
     --[[
+    --- TODO: Consider using a switch statement for better readability.
+    --- Mock several Morrowind functions using the UnitWind library for testing purposes.
+    --- tes3.findGMST: Returns mock values for various game settings.
+    --- tes3.hasCodePatchFeature: Always returns false to prevent interference from external mods.
+    --- tes3.isModActive: Always returns false to prevent interference from external mods.
+    --- tes3.isLuaModActive: Always returns false to prevent interference from external mods.
+    --- TODO: Add mocks for tes3.mobilePlayer and tes3.worldController.
     unitwind:mock(tes3, "findGMST", function(id)
         if id == tes3.gmst.fDamageStrengthBase then
             return { value = 0.5 }
@@ -85,27 +84,13 @@ function Test.Run(shutdown)
         elseif id == tes3.gmst.fDifficultyMult then
             return { value = 5.0 }
         end
-        return { value = tostring(id) } -- temp
+        return { value = tostring(id) } -- Temporarily return the ID as a string for debugging.
     end)
-    unitwind:mock(tes3, "hasCodePatchFeature", function(id)
-        return false
-    end)
-    unitwind:mock(tes3, "isModActive", function(filename)
-        return false
-    end)
-    unitwind:mock(tes3, "isLuaModActive", function(key)
-        return false
-    end)
-    -- TODO tes3.mobilePlayer, tes3.worldController
     ]]--
-
 
     require("longod.DPSTooltips.combat"):RunTest(unitwind)
     require("longod.DPSTooltips.effect"):RunTest(unitwind)
-
     
-    --dps:Initialize()
-
     if shutdown then
         logger:debug("Shutdown")
         os.exit()
