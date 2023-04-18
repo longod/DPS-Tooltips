@@ -1,48 +1,51 @@
----@class EffectResolver
+--- @module '"longod.DPSTooltips.effect"'
+
+--- @class EffectResolver
 local this = {}
 local combat = require("longod.DPSTooltips.combat")
 
----@class AttributeModifier
----@field damage {[tes3.skill] : number},
----@field drain {[tes3.skill] : number},
----@field absorb {[tes3.skill] : number},
----@field restore {[tes3.skill] : number},
----@field fortify {[tes3.skill] : number},
+--- @class AttributeModifier
+--- @field damage {[tes3.skill] : number},
+--- @field drain {[tes3.skill] : number},
+--- @field absorb {[tes3.skill] : number},
+--- @field restore {[tes3.skill] : number},
+--- @field fortify {[tes3.skill] : number},
 
----@class SkillModifier
----@field damage {[tes3.skill] : number},
----@field drain {[tes3.skill] : number},
----@field absorb {[tes3.skill] : number},
----@field restore {[tes3.skill] : number},
----@field fortify {[tes3.skill] : number},
+--- @class SkillModifier
+--- @field damage {[tes3.skill] : number},
+--- @field drain {[tes3.skill] : number},
+--- @field absorb {[tes3.skill] : number},
+--- @field restore {[tes3.skill] : number},
+--- @field fortify {[tes3.skill] : number},
 
----@class Modifier
----@field damages {[tes3.effect] : number}
----@field positives {[tes3.effect] : number}
----@field negatives {[tes3.effect] : number}
----@field attributes AttributeModifier
----@field skills SkillModifier
----@field resists {[tes3.effect] : number} resolved resistance
----@field actived Modifier
+--- @class Modifier
+--- @field damages {[tes3.effect] : number}
+--- @field positives {[tes3.effect] : number}
+--- @field negatives {[tes3.effect] : number}
+--- @field attributes AttributeModifier
+--- @field skills SkillModifier
+--- @field resists {[tes3.effect] : number} resolved resistance
+--- @field actived Modifier
 
----@class ScratchData
----@field attacker Modifier
----@field target Modifier
+--- @class ScratchData
+--- @field attacker Modifier
+--- @field target Modifier
 
----@class Params
----@field data ScratchData
----@field key tes3.effect
----@field value number
----@field speed number
----@field isSelf boolean
----@field attacker boolean
----@field target boolean
----@field attribute tes3.attribute
----@field skill tes3.skill
----@field weaponSkillId tes3.skill
----@field actived boolean
+--- @class Params
+--- @field data ScratchData
+--- @field key tes3.effect
+--- @field value number
+--- @field speed number
+--- @field isSelf boolean
+--- @field attacker boolean
+--- @field target boolean
+--- @field attribute tes3.attribute
+--- @field skill tes3.skill
+--- @field weaponSkillId tes3.skill
+--- @field actived boolean
 
----@return ScratchData
+--- Creates a new ScratchData table to hold temporary data for calculating DPS.
+--- @return ScratchData table.
 function this.CreateScratchData()
     ---@type ScratchData
     local data = {
@@ -108,12 +111,13 @@ function this.CreateScratchData()
     return data
 end
 
----@param tbl { [number]: number }
----@param key number
----@param initial number
----@return number
+--- Gets the value of a key in a table, or returns an initial value if the key does not exist.
+--- @param tbl table<number,number> the table to get the value from.
+--- @param key number the key of the value to get.
+--- @param initial number the initial value to return if the key does not exist.
+--- @return number the value of the key in the table, or the initial value if the key does not exist.
 function this.GetValue(tbl, key, initial)
-    if not tbl[key] then -- no allocate if it does not exists
+    if not tbl[key] then
         return initial
     end
     return tbl[key]
