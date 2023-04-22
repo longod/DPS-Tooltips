@@ -36,18 +36,16 @@ local resolver = require("longod.DPSTooltips.effect")
 ---@param self DPS
 function DPS.Initialize(self)
     -- move gmst values to combat?
-    ---@diagnostic disable: need-check-nil
-    ---@diagnostic disable: assign-type-mismatch
-    self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value
-    self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value
-    self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value
-    self.fSwingBlockBase = tes3.findGMST(tes3.gmst.fSwingBlockBase).value
-    self.fSwingBlockMult = tes3.findGMST(tes3.gmst.fSwingBlockMult).value
+    self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fSwingBlockBase = tes3.findGMST(tes3.gmst.fSwingBlockBase).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fSwingBlockMult = tes3.findGMST(tes3.gmst.fSwingBlockMult).value ---@diagnostic disable-line: assign-type-mismatch
     self.fBlockStillBonus = 1.25 -- tes3.findGMST(tes3.gmst.fBlockStillBonus).value -- hardcoded, OpenMW uses gmst
-    self.iBlockMinChance = tes3.findGMST(tes3.gmst.iBlockMinChance).value
-    self.iBlockMaxChance = tes3.findGMST(tes3.gmst.iBlockMaxChance).value
-    self.fCombatArmorMinMult = tes3.findGMST(tes3.gmst.fCombatArmorMinMult).value
-    self.fDifficultyMult = tes3.findGMST(tes3.gmst.fDifficultyMult).value
+    self.iBlockMinChance = tes3.findGMST(tes3.gmst.iBlockMinChance).value ---@diagnostic disable-line: assign-type-mismatch
+    self.iBlockMaxChance = tes3.findGMST(tes3.gmst.iBlockMaxChance).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fCombatArmorMinMult = tes3.findGMST(tes3.gmst.fCombatArmorMinMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fDifficultyMult = tes3.findGMST(tes3.gmst.fDifficultyMult).value ---@diagnostic disable-line: assign-type-mismatch
 
     -- resolve MCP or mod
     self.fDamageStrengthBase = 0.5
@@ -57,8 +55,8 @@ function DPS.Initialize(self)
     if tes3.hasCodePatchFeature(tes3.codePatchFeature.gameFormulaRestoration) then
         -- maybe require restart when to get initialing
         logger:info("Enabled MCP GameFormulaRestoration")
-        self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value
-        self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value
+        self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value ---@diagnostic disable-line: assign-type-mismatch
+        self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value ---@diagnostic disable-line: assign-type-mismatch
     end
 
     self.restoreDrainAttributesFix = false
@@ -529,8 +527,10 @@ end
 ---@return number
 local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
     local current = 0
+    local base = 0
     if attributes then
         current = current + attributes[t + 1].current
+        base = attributes[t + 1].base
     end
 
     -- avoid double applied
@@ -544,7 +544,6 @@ local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
 
     if restoreDrainAttributesFix then
         if e.attributes.restore[t] then -- can restore drained value?
-            local base = attributes[t + 1].base
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.attributes.restore[t], decreased)
         end
@@ -556,7 +555,6 @@ local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
             current = current + e.attributes.fortify[t]
         end
         if e.attributes.restore[t] then         -- can restore drained value?
-            local base = attributes[t + 1].base
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.attributes.restore[t], decreased)
         end
@@ -578,8 +576,10 @@ end
 ---@return number
 local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
     local current = 0
+    local base = 0
     if skills then
         current = current + skills[t + 1].current
+        base = skills[t + 1].base
     end
 
     -- avoid double applied
@@ -593,7 +593,6 @@ local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
     
     if restoreDrainAttributesFix then
         if e.skills.restore[t] then -- can restore drained value?
-            local base = skills[t + 1].base
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.skills.restore[t], 0)
         end
@@ -605,7 +604,6 @@ local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
             current = current + e.skills.fortify[t]
         end
         if e.skills.restore[t] then         -- can restore drained value?
-            local base = skills[t + 1].base
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.skills.restore[t], 0)
         end

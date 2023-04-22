@@ -10,7 +10,6 @@ end
 
 ---@param shutdown boolean?
 function Test.Run(shutdown)
-    ---@diagnostic disable: need-check-nil
     local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
     local dps = require("longod.DPSTooltips.dps").new(config)
     local combat = require("longod.DPSTooltips.combat")

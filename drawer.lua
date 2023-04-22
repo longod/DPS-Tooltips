@@ -49,7 +49,6 @@ local function PrintTable(tbl, indent)
     if not indent then
         indent = 0
     end
-    ---@diagnostic disable: need-check-nil
     for k, v in pairs(tbl) do
         local space = string.rep("    ", indent)
         local str = space .. k .. ": "

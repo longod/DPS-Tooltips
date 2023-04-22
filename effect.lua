@@ -683,7 +683,6 @@ end
 function this.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.effect")
 
-    ---@diagnostic disable: need-check-nil
     unitwind:test("Empty", function()
         local r = self.Get(tes3.effect.detectAnimal)
         unitwind:expect(r).toBe(nil)
