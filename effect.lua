@@ -1,14 +1,17 @@
 ---@class EffectResolver
 local this = {}
 local combat = require("longod.DPSTooltips.combat")
+local logger = require("longod.DPSTooltips.logger")
 
+-- TODO key should use tes3.effect.*attribute to be better than original?
 ---@class AttributeModifier
----@field damage {[tes3.skill] : number},
----@field drain {[tes3.skill] : number},
----@field absorb {[tes3.skill] : number},
----@field restore {[tes3.skill] : number},
----@field fortify {[tes3.skill] : number},
+---@field damage {[tes3.attribute] : number},
+---@field drain {[tes3.attribute] : number},
+---@field absorb {[tes3.attribute] : number},
+---@field restore {[tes3.attribute] : number},
+---@field fortify {[tes3.attribute] : number},
 
+-- TODO key should use tes3.effect.*skill to be better than original?
 ---@class SkillModifier
 ---@field damage {[tes3.skill] : number},
 ---@field drain {[tes3.skill] : number},
@@ -188,12 +191,16 @@ local skillFilter = {
 
 
 ---@param params Params
+---@param absorb boolean
 ---@return boolean
-local function IsAffectedAttribute(params)
+local function IsAffectedAttribute(params, absorb)
     local f = attributeFilter[params.attribute]
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
-        if params.isSelf then
+        if absorb then
+            local both = f.target or f.attacker
+            return params.target and both
+        elseif params.isSelf then
             return params.attacker and f.attacker
         else
             return params.target and f.target
@@ -203,12 +210,16 @@ local function IsAffectedAttribute(params)
 end
 
 ---@param params Params
+---@param absorb boolean
 ---@return boolean
-local function IsAffectedSkill(params)
+local function IsAffectedSkill(params, absorb)
     local f = skillFilter[params.skill]
     if f then
         -- lua: a and b or c idiom is useless when b and c are boolean, it return b or c.
-        if params.isSelf then
+        if absorb then
+            local both = f.target or (f.attacker and params.skill == params.weaponSkillId)
+            return params.target and both
+        elseif params.isSelf then
             return params.skill == params.weaponSkillId and params.attacker and f.attacker
         else
             return params.target and f.target
@@ -338,7 +349,7 @@ end
 ---@param params Params
 ---@return boolean
 local function FortifyAttribute(params)
-    if not IsAffectedAttribute(params) then
+    if not IsAffectedAttribute(params, false) then
         return false
     end
     if params.isSelf then
@@ -356,7 +367,7 @@ end
 ---@param params Params
 ---@return boolean
 local function DamageAttribute(params)
-    if not IsAffectedAttribute(params) then
+    if not IsAffectedAttribute(params, false) then
         return false
     end
     if params.isSelf then
@@ -377,7 +388,7 @@ end
 ---@param params Params
 ---@return boolean
 local function DrainAttribute(params)
-    if not IsAffectedAttribute(params) then
+    if not IsAffectedAttribute(params, false) then
         return false
     end
     if params.isSelf then
@@ -395,12 +406,17 @@ end
 ---@param params Params
 ---@return boolean
 local function AbsorbAttribute(params)
-    if not IsAffectedAttribute(params) then
+    if not IsAffectedAttribute(params, true) then
         return false
     end
     if params.isSelf then
-        return false
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.attributes.absorb, params.attribute, params.value)
+        else
+            return false
+        end
     else
+        this.AddValue(params.data.attacker.attributes.absorb, params.attribute, params.value)
         this.AddValue(params.data.target.attributes.absorb, params.attribute, params.value)
     end
     return true
@@ -409,7 +425,7 @@ end
 ---@param params Params
 ---@return boolean
 local function RestoreAttribute(params)
-    if not IsAffectedAttribute(params) then
+    if not IsAffectedAttribute(params, false) then
         return false
     end
     if params.isSelf then
@@ -430,7 +446,7 @@ end
 ---@param params Params
 ---@return boolean
 local function FortifySkill(params)
-    if not IsAffectedSkill(params) then
+    if not IsAffectedSkill(params, false) then
         return false
     end
     if params.isSelf then
@@ -448,7 +464,7 @@ end
 ---@param params Params
 ---@return boolean
 local function DamageSkill(params)
-    if not IsAffectedSkill(params) then
+    if not IsAffectedSkill(params, false) then
         return false
     end
     if params.isSelf then
@@ -468,7 +484,7 @@ end
 ---@param params Params
 ---@return boolean
 local function DrainSkill(params)
-    if not IsAffectedSkill(params) then
+    if not IsAffectedSkill(params, false) then
         return false
     end
     if params.isSelf then
@@ -486,12 +502,17 @@ end
 ---@param params Params
 ---@return boolean
 local function AbsorbSkill(params)
-    if not IsAffectedSkill(params) then
+    if not IsAffectedSkill(params, true) then
         return false
     end
     if params.isSelf then
-        return false
+        if params.actived then
+            this.AddValue(params.data.attacker.actived.skills.absorb, params.skill, params.value)
+        else
+            return false
+        end
     else
+        this.AddValue(params.data.attacker.skills.absorb, params.skill, params.value)
         this.AddValue(params.data.target.skills.absorb, params.skill, params.value)
     end
     return true
@@ -500,7 +521,7 @@ end
 ---@param params Params
 ---@return boolean
 local function RestoreSkill(params)
-    if not IsAffectedSkill(params) then
+    if not IsAffectedSkill(params, false) then
         return false
     end
     if params.isSelf then
@@ -519,8 +540,8 @@ end
 
 ---@class Resolver
 ---@field func fun(params: Params): boolean
----@field attacker boolean
----@field target boolean
+---@field attacker boolean affect when hitting
+---@field target boolean affect when hitting
 
 -- only vanilla effects
 ---@class ResolverTable
@@ -677,6 +698,7 @@ function this.Get(effectId)
     return resolver[effectId]
 end
 
+-- TODO test actived case
 -- unittest
 ---@param self EffectResolver
 ---@param unitwind UnitWind
@@ -943,7 +965,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.damageAttribute
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(attributeFilter) do
+        for k, v in pairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -975,7 +997,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.drainAttribute
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(attributeFilter) do
+        for k, v in pairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1007,7 +1029,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.absorbAttribute
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(attributeFilter) do
+        for k, v in pairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1022,8 +1044,9 @@ function this.RunTest(self, unitwind)
                 attribute = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v.target)
-            if v.target then
+            unitwind:expect(affect).toBe(v.target or v.attacker)
+            if v.target or v.attacker then
+                unitwind:expect(data.attacker.attributes.absorb[params.attribute]).toBe(10)
                 unitwind:expect(data.target.attributes.absorb[params.attribute]).toBe(10)
             end
             params.isSelf = true
@@ -1036,7 +1059,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.restoreAttribute
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(attributeFilter) do
+        for k, v in pairs(attributeFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1068,7 +1091,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.fortifySkill
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(skillFilter) do
+        for k, v in pairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1104,7 +1127,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.damageSkill
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(skillFilter) do
+        for k, v in pairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1140,7 +1163,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.drainSkill
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(skillFilter) do
+        for k, v in pairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1176,7 +1199,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.absorbSkill
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(skillFilter) do
+        for k, v in pairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params
@@ -1192,8 +1215,9 @@ function this.RunTest(self, unitwind)
                 weaponSkillId = k,
             }
             local affect = r.func(params)
-            unitwind:expect(affect).toBe(v.target)
-            if v.target then
+            unitwind:expect(affect).toBe(v.target or v.attacker)
+            if v.target or v.attacker then
+                unitwind:expect(data.attacker.skills.absorb[params.skill]).toBe(10)
                 unitwind:expect(data.target.skills.absorb[params.skill]).toBe(10)
             end
             params.isSelf = true
@@ -1209,7 +1233,7 @@ function this.RunTest(self, unitwind)
         local e = tes3.effect.restoreSkill
         local r = self.Get(e)
         unitwind:expect(r).NOT.toBe(nil)
-        for k, v in ipairs(skillFilter) do
+        for k, v in pairs(skillFilter) do
             -- logger:debug(tostring(k))
             local data = self.CreateScratchData()
             ---@type Params

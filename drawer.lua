@@ -181,7 +181,7 @@ end
 ---@param element tes3uiElement
 ---@param data DPSData
 ---@param id integer
----@param effect tes3.effect
+---@param effect tes3.effect|tes3.physicalAttackType
 function Drawer.DisplayIcons(self, element, data, id, effect)
     if self.config.showIcon and data.icons[effect] then
         for _, path in ipairs(data.icons[effect]) do
@@ -231,12 +231,8 @@ function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
                 block.borderAllSides = 1
 
                 -- icons
-                -- Usually, all three types display the same icon. annoying.
                 -- TODO It would be better to consider the layout. display before or after for
-                -- FIXME there are duplicate id's between physicalAttackType and effect, it can either separate the table,
-                -- or fortunately it is not covered by the damage type, so can repackage it into a new one instead of using the icon table all over again.
-                -- or use negative physicalAttackType for key
-                --self:DisplayIcons(block, data, self.idWeaponIcon, k)
+                self:DisplayIcons(block, data, self.idWeaponIcon, -k)
 
                 -- label
                 local text = nil

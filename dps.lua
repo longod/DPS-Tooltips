@@ -104,14 +104,17 @@ function DPS.CanCastOnStrike(self, weapon)
     return self.rangedWeaponCanCastOnSTrike or weapon.isMelee or weapon.isProjectile
 end
 
+---@class Icons
+---@field [tes3.effect] {[integer]: string[]} or [tes3.effect] string[]
+
 ---@param data ScratchData
----@param icons { [tes3.effect]: string[] }
+---@param icons Icons
 ---@param effects tes3effect[]
 ---@param weaponSpeed number
 ---@param weaponSkillId tes3.skill
 ---@param forceTargetEffects boolean
 ---@return ScratchData
----@return { [tes3.effect]: string[] }
+---@return Icons
 local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, forceTargetEffects)
     for _, effect in ipairs(effects) do
         if effect ~= nil and effect.id >= 0 then
@@ -143,7 +146,19 @@ local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, 
                     if not icons[id] then
                         icons[id] = {}
                     end
-                    table.insert(icons[id], effect.object.icon)
+                    if effect.attribute ~= nil and effect.attribute >= 0 then
+                        if not icons[id][effect.attribute] then
+                            icons[id][effect.attribute] = {}
+                        end
+                        table.insert(icons[id][effect.attribute], effect.object.icon)
+                    elseif effect.skill ~= nil and effect.skill >= 0 then
+                        if not icons[id][effect.skill] then
+                            icons[id][effect.skill] = {}
+                        end
+                        table.insert(icons[id][effect.skill], effect.object.icon)
+                    else
+                        table.insert(icons[id], effect.object.icon)
+                    end
                 end
             end
         end
@@ -152,13 +167,13 @@ local function CollectEffects(data, icons, effects, weaponSpeed, weaponSkillId, 
 end
 
 ---@param data ScratchData
----@param icons { [tes3.effect]: string[] }
+---@param icons Icons
 ---@param enchantment tes3enchantment
 ---@param weaponSpeed number
 ---@param canCastOnStrike boolean
 ---@param weaponSkillId tes3.skill
 ---@return ScratchData
----@return { [tes3.effect]: string[] }
+---@return Icons
 local function CollectEnchantmentEffect(data, icons, enchantment, weaponSpeed, canCastOnStrike, weaponSkillId)
     if enchantment then
         -- better is on strike effect consider charge cost
@@ -364,16 +379,32 @@ local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
     return damageRange, highestType
 end
 
----@param icons { [tes3.effect]: string[] }
----@param dest tes3.effect
+---@param icons Icons
+---@param dest tes3.effect|tes3.physicalAttackType
 ---@param src tes3.effect
-local function MergeIcons(icons, dest, src)
+---@param attribute tes3.attribute?
+---@param skill tes3.skill?
+local function MergeIcons(icons, dest, src, attribute, skill)
     if dest ~= src and icons[src] then
         if not icons[dest] then
             icons[dest] = {}
         end
-        for _, path in ipairs(icons[src]) do
-            table.insert(icons[dest], path)
+        if attribute then
+            if icons[src][attribute] then
+                for _, path in ipairs(icons[src][attribute]) do
+                    table.insert(icons[dest], path)
+                end
+            end
+        elseif skill then
+            if icons[src][skill] then
+                for _, path in ipairs(icons[src][skill]) do
+                    table.insert(icons[dest], path)
+                end
+            end
+        else
+            for _, path in ipairs(icons[src]) do
+                table.insert(icons[dest], path)
+            end
         end
     end
 end
@@ -406,7 +437,7 @@ local function ResolveEffectDPS(effect)
 end
 
 ---@param effect ScratchData
----@param icons { [tes3.effect]: string[] }
+---@param icons Icons
 ---@param resistMagicka number
 local function ResolveModifiers(effect, icons, resistMagicka)
     -- effect.target.resists = {}
@@ -518,6 +549,37 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         e.damages[tes3.effect.poison] = 0
         MergeIcons(icons, tes3.effect.poison, tes3.effect.curePoison)
     end
+
+    -- merge icon to weapon damage
+    ---@param e tes3.effect
+    ---@param a tes3.attribute?
+    ---@param s tes3.skill?
+    local function MergePhysicalIcons(e, a, s)
+        local physical = {
+            tes3.physicalAttackType.slash,
+            tes3.physicalAttackType.chop,
+            tes3.physicalAttackType.thrust,
+            tes3.physicalAttackType.projectile,
+        }
+        for _, i in ipairs(physical) do
+            MergeIcons(icons, -i, e, a, s)
+        end
+    end
+    -- todo data orientation
+    if resolver.GetValue(effect.target.positives, tes3.effect.shield, 0) ~= 0 then
+        MergePhysicalIcons(tes3.effect.shield)
+    end
+    -- TODO not zero check is better?
+    -- for k, v in pairs(effect.attacker.attributes) do
+    --     if resolver.GetValue(v, tes3.attribute.strength, 0) ~= 0 then
+    --     end
+    -- end
+    MergePhysicalIcons(tes3.effect.drainAttribute, tes3.attribute.strength, nil)
+    MergePhysicalIcons(tes3.effect.absorbAttribute, tes3.attribute.strength, nil)
+    MergePhysicalIcons(tes3.effect.damageAttribute, tes3.attribute.strength, nil)
+    MergePhysicalIcons(tes3.effect.fortifyAttribute, tes3.attribute.strength, nil)
+    MergePhysicalIcons(tes3.effect.restoreAttribute, tes3.attribute.strength, nil)
+
 end
 
 ---@param e Modifier
@@ -700,12 +762,12 @@ end
 ---@field highestType { [tes3.physicalAttackType]: boolean }
 ---@field effectTotal number
 ---@field effectDamages { [tes3.effect]: number }
----@field icons { [tes3.effect]: string[] }
+---@field icons Icons tes3.physicalAttackType is negative numbers to avoid duplicate keys for tes3.effect and tes3.physicalAttackType
 
--- I'm not sure how to resolve Morrowind's effect strictly.
--- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
--- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
--- And Why do I not use tes3.getEffectMagnitude() or other useful functions? That's because it works for players, but cannot be used against a notional, nonexistent enemy.
+--- I'm not sure how to resolve Morrowind's effect strictly.
+--- If it was to apply them in order from the top, each time, then when the order is Damage, Weakness, so Weakness would have no effect at all.
+--- It is indeed possible to do so, but here it resolves all modifiers once and then apply them.
+--- And Why do I not use tes3.getEffectMagnitude() or other useful functions? That's because it works for players, but cannot be used against a notional, nonexistent enemy.
 ---@param self DPS
 ---@param weapon tes3weapon
 ---@param itemData tes3itemData
@@ -734,7 +796,6 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     tes3.mobilePlayer.effectAttributes)
     ResolveModifiers(effect, icons, resistMagicka)
 
-    -- TODO icons
     local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes, self.restoreDrainAttributesFix)
     local armorRating = GetTargetArmorRating(effect);
 
