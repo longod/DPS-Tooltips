@@ -319,9 +319,10 @@ end
 ---@param speed number
 ---@param strength number
 ---@param armorRating number
+---@param difficultyMultiply number
 ---@param marksman boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, marksman)
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman)
     local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
     local damageMultStr = 0
     local damageMultCond = 1.0
@@ -337,6 +338,9 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armo
         if self.config.accurateDamage then
             v.min = combat.CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
             v.max = combat.CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
+
+            v.min = v.min * difficultyMultiply
+            v.max = v.max * difficultyMultiply
 
             -- The reduction occurs only after all the multipliers are applied to the damage.
             if armorRating > 0 then
@@ -410,16 +414,19 @@ local function MergeIcons(icons, dest, src, attribute, skill)
 end
 
 ---@param effect ScratchData
+---@param difficultyMultiply number
 ---@return number
 ---@return {[tes3.effect]: number}
-local function ResolveEffectDPS(effect)
+local function ResolveEffectDPS(effect, difficultyMultiply)
     local effectDamages = {}
     local effectTotal = 0
 
     -- damage
     for k, v in pairs(effect.target.damages) do
-        effectDamages[k] = v
-        effectTotal = effectTotal + v
+        local damage = v
+        damage = damage * difficultyMultiply
+        effectDamages[k] = damage
+        effectTotal = effectTotal + damage
     end
 
     -- healing
@@ -428,9 +435,9 @@ local function ResolveEffectDPS(effect)
         tes3.effect.fortifyHealth,
     }
     for _, v in ipairs(healing) do
-        local h          = resolver.GetValue(effect.target.positives, v, 0)
+        local h = resolver.GetValue(effect.target.positives, v, 0)
         effectDamages[v] = -h -- display value is negative
-        effectTotal      = effectTotal - h
+        effectTotal = effectTotal - h
     end
 
     return effectTotal, effectDamages
@@ -579,7 +586,6 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     MergePhysicalIcons(tes3.effect.damageAttribute, tes3.attribute.strength, nil)
     MergePhysicalIcons(tes3.effect.fortifyAttribute, tes3.attribute.strength, nil)
     MergePhysicalIcons(tes3.effect.restoreAttribute, tes3.attribute.strength, nil)
-
 end
 
 ---@param e Modifier
@@ -616,7 +622,7 @@ local function GetModifiedAttribute(e, t, attributes, restoreDrainAttributesFix)
         if e.attributes.fortify[t] then
             current = current + e.attributes.fortify[t]
         end
-        if e.attributes.restore[t] then         -- can restore drained value?
+        if e.attributes.restore[t] then -- can restore drained value?
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.attributes.restore[t], decreased)
         end
@@ -652,7 +658,7 @@ local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
     if e.skills.damage[t] then
         current = current - e.skills.damage[t]
     end
-    
+
     if restoreDrainAttributesFix then
         if e.skills.restore[t] then -- can restore drained value?
             local decreased = math.max(base - current, 0)
@@ -665,7 +671,7 @@ local function GetModifiedSkill(e, t, skills, restoreDrainAttributesFix)
         if e.skills.fortify[t] then
             current = current + e.skills.fortify[t]
         end
-        if e.skills.restore[t] then         -- can restore drained value?
+        if e.skills.restore[t] then -- can restore drained value?
             local decreased = math.max(base - current, 0)
             current = current + math.min(e.skills.restore[t], 0)
         end
@@ -685,7 +691,6 @@ end
 ---@param effects number[]?
 ---@return number
 local function GetModifiedEffects(e, t, effects)
-
     local current = 0
     if effects then
         current = current + effects[t + 1]
@@ -701,9 +706,9 @@ local function GetModifiedEffects(e, t, effects)
         [tes3.effectAttribute.attackBonus] = tes3.effect.fortifyAttack,
         [tes3.effectAttribute.sanctuary] = tes3.effect.sanctuary,
         [tes3.effectAttribute.resistMagicka] = tes3.effect.resistMagicka,
-        [tes3.effectAttribute.resistFire] = tes3.effect.resistFire,   -- and fire shield, weakness in .resists
-        [tes3.effectAttribute.resistFrost] = tes3.effect.resistFrost, -- and frost shield, weakness in .resists
-        [tes3.effectAttribute.resistShock] = tes3.effect.resistShock, -- and lighting shield, weakness in .resists
+        [tes3.effectAttribute.resistFire] = tes3.effect.resistFire,     -- and fire shield, weakness in .resists
+        [tes3.effectAttribute.resistFrost] = tes3.effect.resistFrost,   -- and frost shield, weakness in .resists
+        [tes3.effectAttribute.resistShock] = tes3.effect.resistShock,   -- and lighting shield, weakness in .resists
         [tes3.effectAttribute.resistPoison] = tes3.effect.resistPoison, -- and weakness in .resists
         [tes3.effectAttribute.resistParalysis] = tes3.effect.resistParalysis,
         [tes3.effectAttribute.chameleon] = tes3.effect.chameleon,
@@ -772,8 +777,9 @@ end
 ---@param weapon tes3weapon
 ---@param itemData tes3itemData
 ---@param useBestAttack boolean
+---@param difficulty number
 ---@return DPSData
-function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
+function DPS.CalculateDPS(self, weapon, itemData, useBestAttack, difficulty)
     local marksman = weapon.isRanged or weapon.isProjectile
     local speed = weapon.speed -- TODO perhaps speed is scale factor, not acutal length
     local canCastOnStrike = self:CanCastOnStrike(weapon)
@@ -793,15 +799,16 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
     end
 
     local resistMagicka = GetModifiedEffects(effect.attacker, tes3.effectAttribute.resistMagicka,
-    tes3.mobilePlayer.effectAttributes)
+        tes3.mobilePlayer.effectAttributes)
     ResolveModifiers(effect, icons, resistMagicka)
 
     local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes, self.restoreDrainAttributesFix)
     local armorRating = GetTargetArmorRating(effect);
+    local difficultyMultiply = self.config.difficulty and combat.CalculateDifficultyMultiplier(difficulty, self.fDifficultyMult) or 1.0;
 
-    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, marksman)
+    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman)
     local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, self.config.minmaxRange, useBestAttack)
-    local effectTotal, effectDamages = ResolveEffectDPS(effect)
+    local effectTotal, effectDamages = ResolveEffectDPS(effect, difficultyMultiply)
 
     return {
         weaponDamageRange = weaponDamageRange,
@@ -811,6 +818,11 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack)
         effectDamages = effectDamages,
         icons = icons,
     }
+end
+
+---@param self DPS
+---@param unitwind UnitWind
+function DPS.RunTest(self, unitwind)
 end
 
 return DPS

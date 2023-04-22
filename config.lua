@@ -9,6 +9,7 @@ this.defaultConfig = {
     accurateDamage = true,
     maxDurability = true,
     -- maxFatigue = true,
+    difficulty = true,
     breakdown = true,
     -- always or pressed key
     -- hitRate = false,

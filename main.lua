@@ -22,8 +22,9 @@ end
 local function OnUiObjectTooltip(e)
     if config.enable and IsWeapon(e.object) then
         local useBestAttack = tes3.worldController.useBestAttack
+        local difficulty = tes3.worldController.difficulty
         local object = e.object ---@cast object tes3weapon
-        local data = dps:CalculateDPS(object, e.itemData, useBestAttack)
+        local data = dps:CalculateDPS(object, e.itemData, useBestAttack, difficulty)
         drawer:Display(e.tooltip, data, useBestAttack)
     end
 end

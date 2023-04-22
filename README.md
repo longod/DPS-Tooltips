@@ -18,6 +18,7 @@ Anyone who knows more about this would be grateful for advice.
 ## Compatibility:
 - [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) features
   - Game Formula Restoration
+  - Restore Drain Attributes Fix
 - [Cast on Strike Bows](https://www.nexusmods.com/morrowind/mods/45913)
 - [Thrown Projectiles Revamped](https://www.nexusmods.com/morrowind/mods/49609)
 - [Poison Crafting](https://www.nexusmods.com/morrowind/mods/45729)
@@ -30,12 +31,9 @@ Anyone who knows more about this would be grateful for advice.
   - [Tooltip](https://www.nexusmods.com/morrowind/mods/45969)
 
 ## TODO:
-- Attribute effects
 - Skill effects
 - Chance to Hit, Evasion and Blocking
-- Difficulty
 - Modded magic effects
-- Other [Morrowind Code Patch](https://www.nexusmods.com/morrowind/mods/19510) features
 
 ## By Design, Currently:
 - Damage or Healing Over Time effects only use the first applied effect. Because this mod does not calculate total damage numerically.

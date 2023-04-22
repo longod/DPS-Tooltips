@@ -90,6 +90,17 @@ function this.OnModConfigReady()
                 table = data,
             }
         }
+        sub:createOnOffButton {
+            label = "Use difficulty",
+            description = (
+                "Apply damage multiplier by Difficulty option.\n" ..
+                "\nDefault: On"
+                ),
+            variable = mwse.mcm.createTableVariable {
+                id = "difficulty",
+                table = data,
+            }
+        }
     end
 
     do

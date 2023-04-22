@@ -102,6 +102,19 @@ function this.CalculateChanceToHit(hitRate, evation)
     return math.clamp(hitRate - evation, 0.0, 1.0)
 end
 
+---@param difficulty number
+---@param fDifficultyMult number
+---@return number
+function this.CalculateDifficultyMultiplier(difficulty, fDifficultyMult)
+    -- only attacker case
+    if difficulty > 0 then
+        return 1.0 + (-difficulty / fDifficultyMult)
+    else
+        return 1.0 + (-difficulty * fDifficultyMult)
+    end
+end
+
+
 function this.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.combat")
 
@@ -147,6 +160,13 @@ function this.RunTest(self, unitwind)
         unitwind:approxExpect(self.CalculateChanceToHit(0.7, 0.3)).toBe(0.4) -- normal
         unitwind:approxExpect(self.CalculateChanceToHit(2.0, 0.5)).toBe(1.0) -- capped
         unitwind:approxExpect(self.CalculateChanceToHit(0.2, 0.7)).toBe(0.0) -- capped
+    end)
+    unitwind:test("CalculateDifficultyMultiplier", function()
+        unitwind:approxExpect(self.CalculateDifficultyMultiplier(0, 5)).toBe(1.0)
+        unitwind:approxExpect(self.CalculateDifficultyMultiplier(1.0, 5)).toBe(0.8)
+        unitwind:approxExpect(self.CalculateDifficultyMultiplier(0.5, 5)).toBe(0.9)
+        unitwind:approxExpect(self.CalculateDifficultyMultiplier(-1.0, 5)).toBe(6.0)
+        unitwind:approxExpect(self.CalculateDifficultyMultiplier(-0.5, 5)).toBe(3.5)
     end)
 
     unitwind:finish()
