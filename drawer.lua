@@ -214,8 +214,7 @@ end
 ---@param self Drawer
 ---@param element tes3uiElement
 ---@param data DPSData
----@param useBestAttack boolean
-function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
+function Drawer.DisplayWeaponDPS(self, element, data)
     local weaponOrder = {
         tes3.physicalAttackType.slash,
         tes3.physicalAttackType.thrust,
@@ -226,28 +225,23 @@ function Drawer.DisplayWeaponDPS(self, element, data, useBestAttack)
     for _, k in ipairs(weaponOrder) do
         local v = data.weaponDamages[k]
         if v then
-            if (not useBestAttack) or data.highestType[k] then
-                local block = CreateBlock(element, self.idWeaponBlock)
-                block.borderAllSides = 1
+            local block = CreateBlock(element, self.idWeaponBlock)
+            block.borderAllSides = 1
 
-                -- icons
-                -- TODO It would be better to consider the layout. display before or after for
-                self:DisplayIcons(block, data, self.idWeaponIcon, -k)
+            -- icons
+            -- TODO It would be better to consider the layout. display before or after for
+            self:DisplayIcons(block, data, self.idWeaponIcon, -k)
 
-                -- label
-                local text = nil
-                if self.config.minmaxRange then
-                    text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
-                else
-                    text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
-                end
-                local label = CreateLabel(block, self.idWeaponLabel, text)
-                if self.config.coloring and not data.highestType[k] and self.weakColor then
-                    label.color = self.weakColor
-                end
-                if useBestAttack then
-                    break -- order slash, thrust then chop is much actual picking by engine if same value
-                end
+            -- label
+            local text = nil
+            if self.config.minmaxRange then
+                text = string.format("%s: %.1f - %.1f", self.weaponNames[k].name, v.min, v.max)
+            else
+                text = string.format("%s: %.1f", self.weaponNames[k].name, v.max)
+            end
+            local label = CreateLabel(block, self.idWeaponLabel, text)
+            if self.config.coloring and not data.highestType[k] and self.weakColor then
+                label.color = self.weakColor
             end
         end
     end
@@ -292,8 +286,7 @@ end
 ---@param self Drawer
 ---@param element tes3uiElement
 ---@param data DPSData
----@param useBestAttack boolean
-function Drawer.Display(self, element, data, useBestAttack)
+function Drawer.Display(self, element, data)
     if not data then
         return
     end
@@ -324,7 +317,7 @@ function Drawer.Display(self, element, data, useBestAttack)
         frame.paddingLeft = 6
         frame.paddingRight = 6
 
-        self:DisplayWeaponDPS(frame, data, useBestAttack)
+        self:DisplayWeaponDPS(frame, data)
         self:DisplayEnchantmentDPS(frame, data)
         -- display non damage effect if need
     end

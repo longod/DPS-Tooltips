@@ -9,16 +9,16 @@ this.defaultConfig = {
     accurateDamage = true,
     maxDurability = true,
     -- maxFatigue = true,
-    difficulty = true,
+    difficulty = false,
     breakdown = true,
     -- always or pressed key
     -- hitRate = false,
     -- armor = false,
     -- blocking = false,
-    -- difficulty = false,
     coloring = true,
     showIcon = true,
     logLevel = "INFO",
+    unittest = false,
 }
 this.config = nil ---@type Config
 this.configPath = "longod.DPSTooltips"

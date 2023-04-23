@@ -1,8 +1,9 @@
-----[[ unittest
-require("longod.DPSTooltips.test").new().Run(false)
---]]--
 
 local config = require("longod.DPSTooltips.config").Load()
+if config.unittest then
+    require("longod.DPSTooltips.test").new().Run(false)
+end
+
 local dps = require("longod.DPSTooltips.dps").new(config)
 local drawer = require("longod.DPSTooltips.drawer").new(config)
 
@@ -25,7 +26,7 @@ local function OnUiObjectTooltip(e)
         local difficulty = tes3.worldController.difficulty
         local object = e.object ---@cast object tes3weapon
         local data = dps:CalculateDPS(object, e.itemData, useBestAttack, difficulty)
-        drawer:Display(e.tooltip, data, useBestAttack)
+        drawer:Display(e.tooltip, data)
     end
 end
 

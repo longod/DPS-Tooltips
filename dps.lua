@@ -284,15 +284,31 @@ end
 ---@param self DPS
 ---@param weapon tes3weapon
 ---@param marksman boolean
+---@param useBestAttack boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.GetWeaponBaseDamage(self, weapon, marksman)
+function DPS.GetWeaponBaseDamage(self, weapon, marksman, useBestAttack)
     local baseDamage = {} ---@type { [tes3.physicalAttackType]: DamageRange }
     if marksman then
         baseDamage[tes3.physicalAttackType.projectile] = { min = weapon.chopMin, max = weapon.chopMax }
     else
-        baseDamage[tes3.physicalAttackType.slash] = { min = weapon.slashMin, max = weapon.slashMax }
-        baseDamage[tes3.physicalAttackType.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
-        baseDamage[tes3.physicalAttackType.chop] = { min = weapon.chopMin, max = weapon.chopMax }
+        if useBestAttack then
+            -- pick highest average damage
+            local slash = weapon.slashMin + weapon.slashMax
+            local thrust = weapon.thrustMin + weapon.thrustMax
+            local chop = weapon.chopMin + weapon.chopMax
+            -- order is slash, thrust then chop
+            if slash >= thrust and slash >= chop then
+                baseDamage[tes3.physicalAttackType.slash] = { min = weapon.slashMin, max = weapon.slashMax }
+            elseif thrust >= slash and thrust >= chop then
+                baseDamage[tes3.physicalAttackType.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
+            else
+                baseDamage[tes3.physicalAttackType.chop] = { min = weapon.chopMin, max = weapon.chopMax }
+            end
+        else
+            baseDamage[tes3.physicalAttackType.slash] = { min = weapon.slashMin, max = weapon.slashMax }
+            baseDamage[tes3.physicalAttackType.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
+            baseDamage[tes3.physicalAttackType.chop] = { min = weapon.chopMin, max = weapon.chopMax }
+        end
     end
 
     -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
@@ -321,9 +337,10 @@ end
 ---@param armorRating number
 ---@param difficultyMultiply number
 ---@param marksman boolean
+---@param useBestAttack boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman)
-    local baseDamage = self:GetWeaponBaseDamage(weapon, marksman)
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman, useBestAttack)
+    local baseDamage = self:GetWeaponBaseDamage(weapon, marksman, useBestAttack)
     local damageMultStr = 0
     local damageMultCond = 1.0
     if self.config.accurateDamage then
@@ -354,13 +371,11 @@ function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armo
     return baseDamage
 end
 
--- TODO useBestAttack timing is too late, should be base damage phase. but results almost same
 ---@param weaponDamages { [tes3.physicalAttackType]: DamageRange }
 ---@param minmaxRange boolean
----@param useBestAttack boolean
 ---@return DamageRange
 ---@return { [tes3.physicalAttackType] :boolean }
-local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
+local function ResolveWeaponDPS(weaponDamages, minmaxRange)
     local damageRange = { min = 0, max = 0 } ---@type DamageRange
     local highestType = {}
     local typeDamages = {}
@@ -369,7 +384,7 @@ local function ResolveWeaponDPS(weaponDamages, minmaxRange, useBestAttack)
         damageRange.min = math.max(damageRange.min, v.min)
         damageRange.max = math.max(damageRange.max, v.max)
         local typeDamage = v.max
-        if minmaxRange or useBestAttack then
+        if minmaxRange then
             typeDamage = (v.max + v.min) -- average
         end
         highest = math.max(highest, typeDamage)
@@ -465,7 +480,6 @@ local function ResolveModifiers(effect, icons, resistMagicka)
     effect.attacker.resists[rm] = attackerResistMagicka
     -- apply resist magicka to negative effects
     -- TODO perhaps resist magicka does not just multiply. more complex. willpower, luck and fatigue, fully resist is treat as probability
-    -- TODO use acculate option? or remove opiton
     for k, v in pairs(effect.target.negatives) do
         if k ~= tes3.effect.weaknesstoMagicka then
             effect.target.negatives[k] = v * targetResistMagicka
@@ -556,36 +570,6 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         e.damages[tes3.effect.poison] = 0
         MergeIcons(icons, tes3.effect.poison, tes3.effect.curePoison)
     end
-
-    -- merge icon to weapon damage
-    ---@param e tes3.effect
-    ---@param a tes3.attribute?
-    ---@param s tes3.skill?
-    local function MergePhysicalIcons(e, a, s)
-        local physical = {
-            tes3.physicalAttackType.slash,
-            tes3.physicalAttackType.chop,
-            tes3.physicalAttackType.thrust,
-            tes3.physicalAttackType.projectile,
-        }
-        for _, i in ipairs(physical) do
-            MergeIcons(icons, -i, e, a, s)
-        end
-    end
-    -- todo data orientation
-    if resolver.GetValue(effect.target.positives, tes3.effect.shield, 0) ~= 0 then
-        MergePhysicalIcons(tes3.effect.shield)
-    end
-    -- TODO not zero check is better?
-    -- for k, v in pairs(effect.attacker.attributes) do
-    --     if resolver.GetValue(v, tes3.attribute.strength, 0) ~= 0 then
-    --     end
-    -- end
-    MergePhysicalIcons(tes3.effect.drainAttribute, tes3.attribute.strength, nil)
-    MergePhysicalIcons(tes3.effect.absorbAttribute, tes3.attribute.strength, nil)
-    MergePhysicalIcons(tes3.effect.damageAttribute, tes3.attribute.strength, nil)
-    MergePhysicalIcons(tes3.effect.fortifyAttribute, tes3.attribute.strength, nil)
-    MergePhysicalIcons(tes3.effect.restoreAttribute, tes3.attribute.strength, nil)
 end
 
 ---@param e Modifier
@@ -762,8 +746,8 @@ end
 
 
 ---@class DPSData
----@field weaponDamageRange table
----@field weaponDamages table
+---@field weaponDamageRange DamageRange
+---@field weaponDamages { [tes3.physicalAttackType]: DamageRange }
 ---@field highestType { [tes3.physicalAttackType]: boolean }
 ---@field effectTotal number
 ---@field effectDamages { [tes3.effect]: number }
@@ -798,16 +782,47 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack, difficulty)
         end
     end
 
-    local resistMagicka = GetModifiedEffects(effect.attacker, tes3.effectAttribute.resistMagicka,
-        tes3.mobilePlayer.effectAttributes)
+    local resistMagicka = GetModifiedEffects(effect.attacker, tes3.effectAttribute.resistMagicka, tes3.mobilePlayer.effectAttributes)
     ResolveModifiers(effect, icons, resistMagicka)
+
+    -- merge icon to weapon damage
+    if self.config.accurateDamage then
+        ---@param e tes3.effect
+        ---@param a tes3.attribute?
+        ---@param s tes3.skill?
+        local function MergePhysicalIcons(e, a, s)
+            local physical = {
+                tes3.physicalAttackType.slash,
+                tes3.physicalAttackType.chop,
+                tes3.physicalAttackType.thrust,
+                tes3.physicalAttackType.projectile,
+            }
+            for _, i in ipairs(physical) do
+                MergeIcons(icons, -i, e, a, s)
+            end
+        end
+        -- TODO data orientation
+        if resolver.GetValue(effect.target.positives, tes3.effect.shield, 0) ~= 0 then
+            MergePhysicalIcons(tes3.effect.shield)
+        end
+        -- TODO not zero check is better?
+        -- for k, v in pairs(effect.attacker.attributes) do
+        --     if resolver.GetValue(v, tes3.attribute.strength, 0) ~= 0 then
+        --     end
+        -- end
+        MergePhysicalIcons(tes3.effect.drainAttribute, tes3.attribute.strength, nil)
+        MergePhysicalIcons(tes3.effect.absorbAttribute, tes3.attribute.strength, nil)
+        MergePhysicalIcons(tes3.effect.damageAttribute, tes3.attribute.strength, nil)
+        MergePhysicalIcons(tes3.effect.fortifyAttribute, tes3.attribute.strength, nil)
+        MergePhysicalIcons(tes3.effect.restoreAttribute, tes3.attribute.strength, nil)
+    end
 
     local strength = GetModifiedAttribute(effect.attacker, tes3.attribute.strength, tes3.mobilePlayer.attributes, self.restoreDrainAttributesFix)
     local armorRating = GetTargetArmorRating(effect);
     local difficultyMultiply = self.config.difficulty and combat.CalculateDifficultyMultiplier(difficulty, self.fDifficultyMult) or 1.0;
 
-    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman)
-    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, self.config.minmaxRange, useBestAttack)
+    local weaponDamages = self:CalculateWeaponDamage(weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman, useBestAttack)
+    local weaponDamageRange, highestType = ResolveWeaponDPS(weaponDamages, self.config.minmaxRange)
     local effectTotal, effectDamages = ResolveEffectDPS(effect, difficultyMultiply)
 
     return {
@@ -823,6 +838,9 @@ end
 ---@param self DPS
 ---@param unitwind UnitWind
 function DPS.RunTest(self, unitwind)
+    local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
+    local dps = require("longod.DPSTooltips.dps").new(config)
+    --dps:Initialize()
 end
 
 return DPS

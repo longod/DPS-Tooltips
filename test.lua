@@ -10,15 +10,11 @@ end
 
 ---@param shutdown boolean?
 function Test.Run(shutdown)
-    local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
-    local dps = require("longod.DPSTooltips.dps").new(config)
     local combat = require("longod.DPSTooltips.combat")
     local logger = require("longod.DPSTooltips.logger")
 
     local unitwind = require("unitwind").new {
         enabled = true,
-        beforeAll = function()
-        end,
     }
 
     -- add equality for floating point error
@@ -98,12 +94,9 @@ function Test.Run(shutdown)
     -- TODO tes3.mobilePlayer, tes3.worldController
     ]]--
 
-
     require("longod.DPSTooltips.combat"):RunTest(unitwind)
     require("longod.DPSTooltips.effect"):RunTest(unitwind)
-
-    
-    --dps:Initialize()
+    require("longod.DPSTooltips.dps"):RunTest(unitwind)
 
     if shutdown then
         logger:debug("Shutdown")
