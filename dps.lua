@@ -104,6 +104,13 @@ function DPS.CanCastOnStrike(self, weapon)
     return self.rangedWeaponCanCastOnSTrike or weapon.isMelee or weapon.isProjectile
 end
 
+---@param self DPS
+---@param weapon tes3weapon
+---@return boolean
+function DPS.NeedModifyThrowWeapon(self, weapon)
+    return weapon.type == tes3.weaponType.marksmanThrown and not self.throwWeaponAlreadyModified
+end
+
 ---@class Icons
 ---@field [tes3.effect] {[integer]: string[]} or [tes3.effect] string[]
 
@@ -231,28 +238,6 @@ local function CollectActiveMagicEffect(data, activeMagicEffectList, weapon, can
     return data
 end
 
----@param self DPS
----@param agility number
----@param luck number
----@param fatigueTerm number
----@param sanctuary number
----@param chameleon number
----@param invisibility boolean
----@param isKnockedDown boolean
----@param isParalyzed boolean
----@param unware boolean
----@return number
-function DPS.CalculateEvasion(self, agility, luck, fatigueTerm, sanctuary, chameleon, invisibility, isKnockedDown,
-                              isParalyzed, unware)
-    local evasion = 0
-    if not (isKnockedDown or isParalyzed or unware) then
-        evasion = combat.CalculateEvasion(agility, luck, fatigueTerm, sanctuary)
-    end
-    evasion = evasion + math.min(self.fCombatInvisoMult * chameleon, 100)
-    evasion = evasion + math.min(self.fCombatInvisoMult * (invisibility and 1 or 0), 100)
-    return evasion
-end
-
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
 ---@param weapon tes3weapon
 ---@param itemData tes3itemData
@@ -266,14 +251,15 @@ local function GetConditionModifier(weapon, itemData)
 end
 
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
----@param self DPS
 ---@param strength number
+---@param fDamageStrengthBase number
+---@param fDamageStrengthMult number
 ---@return number
-function DPS.GetStrengthModifier(self, strength)
+local function GetStrengthModifier(strength, fDamageStrengthBase, fDamageStrengthMult)
     -- how capped value without mcp patch?
     local currentStrength = math.max(strength, 0)
     -- resolved base and mult on initialize
-    return self.fDamageStrengthBase + (self.fDamageStrengthMult * currentStrength)
+    return fDamageStrengthBase + (fDamageStrengthMult * currentStrength)
 end
 
 ---@class DamageRange
@@ -281,15 +267,22 @@ end
 ---@field max number
 
 -- from Accurate Tooltip Stats (https://www.nexusmods.com/morrowind/mods/51354) by Necrolesian
----@param self DPS
 ---@param weapon tes3weapon
 ---@param marksman boolean
 ---@param useBestAttack boolean
+---@param needModifyThrowWeapon boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.GetWeaponBaseDamage(self, weapon, marksman, useBestAttack)
+local function GetWeaponBaseDamage(weapon, marksman, useBestAttack, needModifyThrowWeapon)
     local baseDamage = {} ---@type { [tes3.physicalAttackType]: DamageRange }
     if marksman then
         baseDamage[tes3.physicalAttackType.projectile] = { min = weapon.chopMin, max = weapon.chopMax }
+
+        -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
+        -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
+        if needModifyThrowWeapon then
+            baseDamage[tes3.physicalAttackType.projectile].min = 2 * baseDamage[tes3.physicalAttackType.projectile].min
+            baseDamage[tes3.physicalAttackType.projectile].max = 2 * baseDamage[tes3.physicalAttackType.projectile].max
+        end
     else
         if useBestAttack then
             -- pick highest average damage
@@ -309,13 +302,6 @@ function DPS.GetWeaponBaseDamage(self, weapon, marksman, useBestAttack)
             baseDamage[tes3.physicalAttackType.thrust] = { min = weapon.thrustMin, max = weapon.thrustMax }
             baseDamage[tes3.physicalAttackType.chop] = { min = weapon.chopMin, max = weapon.chopMax }
         end
-    end
-
-    -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
-    -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
-    if weapon.type == tes3.weaponType.marksmanThrown and not self.throwWeaponAlreadyModified then
-        baseDamage[tes3.physicalAttackType.projectile].min = 2 * baseDamage[tes3.physicalAttackType.projectile].min
-        baseDamage[tes3.physicalAttackType.projectile].max = 2 * baseDamage[tes3.physicalAttackType.projectile].max
     end
 
     return baseDamage
@@ -340,11 +326,11 @@ end
 ---@param useBestAttack boolean
 ---@return { [tes3.physicalAttackType]: DamageRange }
 function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman, useBestAttack)
-    local baseDamage = self:GetWeaponBaseDamage(weapon, marksman, useBestAttack)
+    local baseDamage = GetWeaponBaseDamage(weapon, marksman, useBestAttack, self:NeedModifyThrowWeapon(weapon))
     local damageMultStr = 0
     local damageMultCond = 1.0
     if self.config.accurateDamage then
-        damageMultStr = self:GetStrengthModifier(strength)
+        damageMultStr = GetStrengthModifier(strength, self.fDamageStrengthBase, self.fDamageStrengthMult)
         if not self.config.maxDurability then
             damageMultCond = GetConditionModifier(weapon, itemData)
         end
@@ -462,8 +448,6 @@ end
 ---@param icons Icons
 ---@param resistMagicka number
 local function ResolveModifiers(effect, icons, resistMagicka)
-    -- effect.target.resists = {}
-    -- effect.attacker.resists = {}
     -- resist/weakness magicka
     local rm = tes3.effect.resistMagicka
     local wm = tes3.effect.weaknesstoMagicka
@@ -491,11 +475,8 @@ local function ResolveModifiers(effect, icons, resistMagicka)
         end
     end
 
-    -- probability
+    -- probability reflect, spellAbsorption, dispel..
     -- but it seems not apply the same item effects. if effects already applied, it can be dispeled.
-    -- local reflectChance = resolver.GetValue(effect.target.positives, tes3.effect.spellAbsorption, 1.0) *
-    -- resolver.GetValue(effect.target.positives, tes3.effect.reflect, 1.0)
-    -- local dispelChance = InverseNormalize(resolver.GetValue(effect.target.positives, tes3.effect.dispel, 0))
 
     -- merge resist/weakness elemental and shield
     local resistweakness = {
@@ -716,34 +697,17 @@ local function GetModifiedEffects(e, t, effects)
     return current
 end
 
+-- local function GetModifiedCurrentFatigue(e, t, fatigue)
+-- end
+-- local function GetModifiedMaxFatigue(e, t, fatigue)
+-- end
+
 ---@param effect ScratchData
 local function GetTargetArmorRating(effect)
     -- currently only shield effect
     local shield = GetModifiedEffects(effect.target, tes3.effectAttribute.shield, nil)
     return shield
 end
-
--- local function GetModifiedCurrentFatigue(e, t, fatigue)
--- end
--- local function GetModifiedMaxFatigue(e, t, fatigue)
--- end
-
--- local function CalculateHitRate_(weapon, effect)
---     local skillId = weapon.skillId
---     local weaponSkill = math.max(tes3.mobilePlayer:getSkillValue(skillId) + GetModifiedSkill(effect.attacker, skillId), 0)
---     local agility = math.max(
---         tes3.mobilePlayer.agility.current + GetModifiedAttribute(effect.attacker, tes3.attribute.agility), 0)
---     local luck = math.max(tes3.mobilePlayer.luck.current + GetModifiedAttribute(effect.attacker, tes3.attribute.luck), 0)
---     -- return CalculateHitRate(weaponSkill, agility, luck, 0, 1, 0, 0)
--- end
-
--- local function CalculateEvasion_(weapon, effect)
--- end
-
--- local function CalculateHit(weapon, effect)
---     --return CalculateChanceToHit(hitRate, evasion)
--- end
-
 
 ---@class DPSData
 ---@field weaponDamageRange DamageRange
@@ -838,9 +802,119 @@ end
 ---@param self DPS
 ---@param unitwind UnitWind
 function DPS.RunTest(self, unitwind)
+    unitwind:start("DPSTooltips.effect")
+
+    -- mock
+    -- TODO switch case true/false
+    unitwind:mock(tes3, "findGMST", function(id)
+        local gmst = {
+            [tes3.gmst.fDamageStrengthBase] = { value = 0.5 },
+            [tes3.gmst.fDamageStrengthMult] = { value = 0.1 },
+            [tes3.gmst.fFatigueBase] = { value = 1.25 },
+            [tes3.gmst.fFatigueMult] = { value = 0.5 },
+            [tes3.gmst.fCombatInvisoMult] = { value = 0.2 },
+            [tes3.gmst.fSwingBlockBase] = { value = 1.0 },
+            [tes3.gmst.fSwingBlockMult] = { value = 1.0 },
+            [tes3.gmst.fBlockStillBonus] = { value = 1.25 },
+            [tes3.gmst.iBlockMinChance] = { value = 10 },
+            [tes3.gmst.iBlockMaxChance] = { value = 50 },
+            [tes3.gmst.fCombatArmorMinMult] = { value = 0.25 },
+            [tes3.gmst.fDifficultyMult] = { value = 5.0 },
+        }
+        if gmst[id] then
+            return gmst[id]
+        end
+        return { value = tostring(id) } -- temp
+    end)
+    unitwind:mock(tes3, "hasCodePatchFeature", function(id)
+        return false
+    end)
+    unitwind:mock(tes3, "isModActive", function(filename)
+        return false
+    end)
+    unitwind:mock(tes3, "isLuaModActive", function(key)
+        return false
+    end)
+    unitwind:mock(tes3, "mobilePlayer", {
+        activeMagicEffectList = {},
+        attributes = {
+            { base = 100, current = 100 }, -- strength
+            { base = 100, current = 100 }, -- intelligence
+            { base = 100, current = 100 }, -- willpower
+            { base = 100, current = 100 }, -- agility
+            { base = 100, current = 100 }, -- speed
+            { base = 100, current = 100 }, -- endurance
+            { base = 100, current = 100 }, -- personality
+            { base = 100, current = 100 }, -- luck
+        },
+        effectAttributes = {
+            0, -- attackBonus
+            0, -- sanctuary
+            0, -- resistMagicka
+            0, -- resistFire
+            0, -- resistFrost
+            0, -- resistShock
+            0, -- resistCommonDisease
+            0, -- resistBlightDisease
+            0, -- resistCorprus
+            0, -- resistPoison
+            0, -- resistParalysis
+            0, -- chameleon
+            0, -- resistNormalWeapons
+            0, -- waterBreathing
+            0, -- waterWalking
+            0, -- swiftSwim
+            0, -- jump
+            0, -- levitate
+            0, -- shield
+            0, -- sound
+            0, -- silence
+            0, -- blind
+            0, -- paralyze
+            0, -- invisibility
+            0, -- fight
+            0, -- flee
+            0, -- hello
+            0, -- alarm
+            0, -- nonResistable
+        },
+        skills = {
+            { base = 100, current = 100 }, -- block
+            { base = 100, current = 100 }, -- armorer
+            { base = 100, current = 100 }, -- mediumArmor
+            { base = 100, current = 100 }, -- heavyArmor
+            { base = 100, current = 100 }, -- bluntWeapon
+            { base = 100, current = 100 }, -- longBlade
+            { base = 100, current = 100 }, -- axe
+            { base = 100, current = 100 }, -- spear
+            { base = 100, current = 100 }, -- athletics
+            { base = 100, current = 100 }, -- enchant
+            { base = 100, current = 100 }, -- destruction
+            { base = 100, current = 100 }, -- alteration
+            { base = 100, current = 100 }, -- illusion
+            { base = 100, current = 100 }, -- conjuration
+            { base = 100, current = 100 }, -- mysticism
+            { base = 100, current = 100 }, -- restoration
+            { base = 100, current = 100 }, -- alchemy
+            { base = 100, current = 100 }, -- unarmored
+            { base = 100, current = 100 }, -- security
+            { base = 100, current = 100 }, -- sneak
+            { base = 100, current = 100 }, -- acrobatics
+            { base = 100, current = 100 }, -- lightArmor
+            { base = 100, current = 100 }, -- shortBlade
+            { base = 100, current = 100 }, -- marksman
+            { base = 100, current = 100 }, -- mercantile
+            { base = 100, current = 100 }, -- speechcraft
+            { base = 100, current = 100 }, -- handToHand
+        },
+    })
+
     local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
     local dps = require("longod.DPSTooltips.dps").new(config)
-    --dps:Initialize()
+    dps:Initialize()
+
+    unitwind:finish()
+
 end
 
 return DPS
