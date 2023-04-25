@@ -800,6 +800,7 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack, difficulty)
 end
 
 ---@param self DPS
+---@param unitwind MyUnitWind
 function DPS.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.effect")
 

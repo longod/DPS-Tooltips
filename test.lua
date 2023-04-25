@@ -8,6 +8,9 @@ function Test.new()
     return test
 end
 
+---@class MyUnitWind: UnitWind
+---@field approxExpect fun(self: UnitWind, result: any, epsilon: number?) : UnitWind.expects
+
 ---@param shutdown boolean?
 function Test.Run(shutdown)
     local combat = require("longod.DPSTooltips.combat")
@@ -15,7 +18,7 @@ function Test.Run(shutdown)
 
     local unitwind = require("unitwind").new {
         enabled = true,
-    }
+    } ---@cast unitwind MyUnitWind
 
     -- add equality for floating point error
     ---@param result any #The result to check

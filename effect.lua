@@ -701,7 +701,7 @@ end
 -- TODO test actived case
 -- unittest
 ---@param self EffectResolver
----@param unitwind UnitWind
+---@param unitwind MyUnitWind
 function this.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.effect")
 
