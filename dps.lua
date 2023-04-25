@@ -33,84 +33,6 @@ local logger = require("longod.DPSTooltips.logger")
 local combat = require("longod.DPSTooltips.combat")
 local resolver = require("longod.DPSTooltips.effect")
 
----@param self DPS
-function DPS.Initialize(self)
-    -- move gmst values to combat?
-    self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fSwingBlockBase = tes3.findGMST(tes3.gmst.fSwingBlockBase).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fSwingBlockMult = tes3.findGMST(tes3.gmst.fSwingBlockMult).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fBlockStillBonus = 1.25 -- tes3.findGMST(tes3.gmst.fBlockStillBonus).value -- hardcoded, OpenMW uses gmst
-    self.iBlockMinChance = tes3.findGMST(tes3.gmst.iBlockMinChance).value ---@diagnostic disable-line: assign-type-mismatch
-    self.iBlockMaxChance = tes3.findGMST(tes3.gmst.iBlockMaxChance).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fCombatArmorMinMult = tes3.findGMST(tes3.gmst.fCombatArmorMinMult).value ---@diagnostic disable-line: assign-type-mismatch
-    self.fDifficultyMult = tes3.findGMST(tes3.gmst.fDifficultyMult).value ---@diagnostic disable-line: assign-type-mismatch
-
-    -- resolve MCP or mod
-    self.fDamageStrengthBase = 0.5
-    self.fDamageStrengthMult = 0.01
-    -- This MCP feature causes the game to use these GMSTs in its weapon damage calculations instead of the hardcoded
-    -- values used by the vanilla game. With default values for the GMSTs the outcome is the same.
-    if tes3.hasCodePatchFeature(tes3.codePatchFeature.gameFormulaRestoration) then
-        -- maybe require restart when to get initialing
-        logger:info("Enabled MCP GameFormulaRestoration")
-        self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value ---@diagnostic disable-line: assign-type-mismatch
-        self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value ---@diagnostic disable-line: assign-type-mismatch
-    end
-
-    self.restoreDrainAttributesFix = false
-    if tes3.hasCodePatchFeature(tes3.codePatchFeature.restoreDrainAttributesFix) then
-        logger:info("Enabled MCP RestoreDrainAttributesFix")
-        self.restoreDrainAttributesFix = true
-    end
-
-    -- sign
-    self.blindFix = -1
-    if tes3.hasCodePatchFeature(tes3.codePatchFeature.blindFix) then
-        logger:info("Enabled MCP BlindFix")
-        self.blindFix = 1
-    end
-
-    -- https://www.nexusmods.com/morrowind/mods/45913
-    self.rangedWeaponCanCastOnSTrike = false
-    if tes3.isModActive("Cast on Strike Bows.esp") then
-        -- this MCP fix seems, deny on strile option when enchaning, exsisting ranged weapons on strike dont require this fix to torigger.
-        -- ~tes3.hasCodePatchFeature(tes3.codePatchFeature.fixEnchantOptionsOnRanged)
-        logger:info("Enabled Cast on Strike Bows")
-        self.rangedWeaponCanCastOnSTrike = true
-    end
-
-    -- https://www.nexusmods.com/morrowind/mods/49609
-    -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
-    -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
-    self.throwWeaponAlreadyModified = false
-    if tes3.isLuaModActive("DQ.ThroProjRev") then
-        logger:info("Enabled Thrown Projectiles Revamped")
-        self.throwWeaponAlreadyModified = true
-    end
-
-    self.poisonCrafting = nil
-    if tes3.isLuaModActive("poisonCrafting") then
-        logger:info("Enabled Poison Crafting")
-        self.poisonCrafting = require("longod.DPSTooltips.poison")
-    end
-end
-
----@param self DPS
----@param weapon tes3weapon
----@return boolean
-function DPS.CanCastOnStrike(self, weapon)
-    return self.rangedWeaponCanCastOnSTrike or weapon.isMelee or weapon.isProjectile
-end
-
----@param self DPS
----@param weapon tes3weapon
----@return boolean
-function DPS.NeedModifyThrowWeapon(self, weapon)
-    return weapon.type == tes3.weaponType.marksmanThrown and not self.throwWeaponAlreadyModified
-end
-
 ---@class Icons
 ---@field [tes3.effect] {[integer]: string[]} or [tes3.effect] string[]
 
@@ -304,56 +226,6 @@ local function GetWeaponBaseDamage(weapon, marksman, useBestAttack, needModifyTh
         end
     end
 
-    return baseDamage
-end
-
----@param self DPS
----@param currentFatigue number
----@param baseFatigue number
----@return number
-function DPS.GetFatigueTerm(self, currentFatigue, baseFatigue)
-    return combat.CalculateFatigueTerm(currentFatigue, baseFatigue, self.fFatigueBase, self.fFatigueMult)
-end
-
----@param self DPS
----@param weapon tes3weapon
----@param itemData tes3itemData
----@param speed number
----@param strength number
----@param armorRating number
----@param difficultyMultiply number
----@param marksman boolean
----@param useBestAttack boolean
----@return { [tes3.physicalAttackType]: DamageRange }
-function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman, useBestAttack)
-    local baseDamage = GetWeaponBaseDamage(weapon, marksman, useBestAttack, self:NeedModifyThrowWeapon(weapon))
-    local damageMultStr = 0
-    local damageMultCond = 1.0
-    if self.config.accurateDamage then
-        damageMultStr = GetStrengthModifier(strength, self.fDamageStrengthBase, self.fDamageStrengthMult)
-        if not self.config.maxDurability then
-            damageMultCond = GetConditionModifier(weapon, itemData)
-        end
-    end
-    local minSpeed = speed -- TODO maybe more quickly, it seems depends animation frame
-    local maxSpeed = speed -- same as animation frame?
-    for _, v in pairs(baseDamage) do
-        if self.config.accurateDamage then
-            v.min = combat.CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
-            v.max = combat.CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
-
-            v.min = v.min * difficultyMultiply
-            v.max = v.max * difficultyMultiply
-
-            -- The reduction occurs only after all the multipliers are applied to the damage.
-            if armorRating > 0 then
-                v.min = combat.CalculateDamageReductionFromArmorRating(v.min, armorRating, self.fCombatArmorMinMult)
-                v.max = combat.CalculateDamageReductionFromArmorRating(v.max, armorRating, self.fCombatArmorMinMult)
-            end
-        end
-        v.min = combat.CalculateDPS(v.min, minSpeed)
-        v.max = combat.CalculateDPS(v.max, maxSpeed)
-    end
     return baseDamage
 end
 
@@ -709,6 +581,134 @@ local function GetTargetArmorRating(effect)
     return shield
 end
 
+---@param self DPS
+function DPS.Initialize(self)
+    -- move gmst values to combat?
+    self.fFatigueBase = tes3.findGMST(tes3.gmst.fFatigueBase).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fFatigueMult = tes3.findGMST(tes3.gmst.fFatigueMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fCombatInvisoMult = tes3.findGMST(tes3.gmst.fCombatInvisoMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fSwingBlockBase = tes3.findGMST(tes3.gmst.fSwingBlockBase).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fSwingBlockMult = tes3.findGMST(tes3.gmst.fSwingBlockMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fBlockStillBonus = 1.25 -- tes3.findGMST(tes3.gmst.fBlockStillBonus).value -- hardcoded, OpenMW uses gmst
+    self.iBlockMinChance = tes3.findGMST(tes3.gmst.iBlockMinChance).value ---@diagnostic disable-line: assign-type-mismatch
+    self.iBlockMaxChance = tes3.findGMST(tes3.gmst.iBlockMaxChance).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fCombatArmorMinMult = tes3.findGMST(tes3.gmst.fCombatArmorMinMult).value ---@diagnostic disable-line: assign-type-mismatch
+    self.fDifficultyMult = tes3.findGMST(tes3.gmst.fDifficultyMult).value ---@diagnostic disable-line: assign-type-mismatch
+
+    -- resolve MCP or mod
+    self.fDamageStrengthBase = 0.5
+    self.fDamageStrengthMult = 0.01
+    -- This MCP feature causes the game to use these GMSTs in its weapon damage calculations instead of the hardcoded
+    -- values used by the vanilla game. With default values for the GMSTs the outcome is the same.
+    if tes3.hasCodePatchFeature(tes3.codePatchFeature.gameFormulaRestoration) then
+        -- maybe require restart when to get initialing
+        logger:info("Enabled MCP GameFormulaRestoration")
+        self.fDamageStrengthBase = tes3.findGMST(tes3.gmst.fDamageStrengthBase).value ---@diagnostic disable-line: assign-type-mismatch
+        self.fDamageStrengthMult = 0.1 * tes3.findGMST(tes3.gmst.fDamageStrengthMult).value ---@diagnostic disable-line: assign-type-mismatch
+    end
+
+    self.restoreDrainAttributesFix = false
+    if tes3.hasCodePatchFeature(tes3.codePatchFeature.restoreDrainAttributesFix) then
+        logger:info("Enabled MCP RestoreDrainAttributesFix")
+        self.restoreDrainAttributesFix = true
+    end
+
+    -- sign
+    self.blindFix = -1
+    if tes3.hasCodePatchFeature(tes3.codePatchFeature.blindFix) then
+        logger:info("Enabled MCP BlindFix")
+        self.blindFix = 1
+    end
+
+    -- https://www.nexusmods.com/morrowind/mods/45913
+    self.rangedWeaponCanCastOnSTrike = false
+    if tes3.isModActive("Cast on Strike Bows.esp") then
+        -- this MCP fix seems, deny on strile option when enchaning, exsisting ranged weapons on strike dont require this fix to torigger.
+        -- ~tes3.hasCodePatchFeature(tes3.codePatchFeature.fixEnchantOptionsOnRanged)
+        logger:info("Enabled Cast on Strike Bows")
+        self.rangedWeaponCanCastOnSTrike = true
+    end
+
+    -- https://www.nexusmods.com/morrowind/mods/49609
+    -- The vanilla game doubles the official damage values for thrown weapons. The mod Thrown Projectiles Revamped
+    -- halves the actual damage done, so don't double the displayed damage if that mod is in use.
+    self.throwWeaponAlreadyModified = false
+    if tes3.isLuaModActive("DQ.ThroProjRev") then
+        logger:info("Enabled Thrown Projectiles Revamped")
+        self.throwWeaponAlreadyModified = true
+    end
+
+    self.poisonCrafting = nil
+    if tes3.isLuaModActive("poisonCrafting") then
+        logger:info("Enabled Poison Crafting")
+        self.poisonCrafting = require("longod.DPSTooltips.poison")
+    end
+end
+
+---@param self DPS
+---@param weapon tes3weapon
+---@return boolean
+function DPS.CanCastOnStrike(self, weapon)
+    return self.rangedWeaponCanCastOnSTrike or weapon.isMelee or weapon.isProjectile
+end
+
+---@param self DPS
+---@param weapon tes3weapon
+---@return boolean
+function DPS.NeedModifyThrowWeapon(self, weapon)
+    return weapon.type == tes3.weaponType.marksmanThrown and not self.throwWeaponAlreadyModified
+end
+
+---@param self DPS
+---@param currentFatigue number
+---@param baseFatigue number
+---@return number
+function DPS.GetFatigueTerm(self, currentFatigue, baseFatigue)
+    return combat.CalculateFatigueTerm(currentFatigue, baseFatigue, self.fFatigueBase, self.fFatigueMult)
+end
+
+---@param self DPS
+---@param weapon tes3weapon
+---@param itemData tes3itemData
+---@param speed number
+---@param strength number
+---@param armorRating number
+---@param difficultyMultiply number
+---@param marksman boolean
+---@param useBestAttack boolean
+---@return { [tes3.physicalAttackType]: DamageRange }
+function DPS.CalculateWeaponDamage(self, weapon, itemData, speed, strength, armorRating, difficultyMultiply, marksman, useBestAttack)
+    local baseDamage = GetWeaponBaseDamage(weapon, marksman, useBestAttack, self:NeedModifyThrowWeapon(weapon))
+    local damageMultStr = 0
+    local damageMultCond = 1.0
+    if self.config.accurateDamage then
+        damageMultStr = GetStrengthModifier(strength, self.fDamageStrengthBase, self.fDamageStrengthMult)
+        if not self.config.maxDurability then
+            damageMultCond = GetConditionModifier(weapon, itemData)
+        end
+    end
+    local minSpeed = speed -- TODO maybe more quickly, it seems depends animation frame
+    local maxSpeed = speed -- same as animation frame?
+    for _, v in pairs(baseDamage) do
+        if self.config.accurateDamage then
+            v.min = combat.CalculateAcculateWeaponDamage(v.min, damageMultStr, damageMultCond, 1);
+            v.max = combat.CalculateAcculateWeaponDamage(v.max, damageMultStr, damageMultCond, 1);
+
+            v.min = v.min * difficultyMultiply
+            v.max = v.max * difficultyMultiply
+
+            -- The reduction occurs only after all the multipliers are applied to the damage.
+            if armorRating > 0 then
+                v.min = combat.CalculateDamageReductionFromArmorRating(v.min, armorRating, self.fCombatArmorMinMult)
+                v.max = combat.CalculateDamageReductionFromArmorRating(v.max, armorRating, self.fCombatArmorMinMult)
+            end
+        end
+        v.min = combat.CalculateDPS(v.min, minSpeed)
+        v.max = combat.CalculateDPS(v.max, maxSpeed)
+    end
+    return baseDamage
+end
+
 ---@class DPSData
 ---@field weaponDamageRange DamageRange
 ---@field weaponDamages { [tes3.physicalAttackType]: DamageRange }
@@ -800,12 +800,10 @@ function DPS.CalculateDPS(self, weapon, itemData, useBestAttack, difficulty)
 end
 
 ---@param self DPS
----@param unitwind UnitWind
 function DPS.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.effect")
 
     -- mock
-    -- TODO switch case true/false
     unitwind:mock(tes3, "findGMST", function(id)
         local gmst = {
             [tes3.gmst.fDamageStrengthBase] = { value = 0.5 },
@@ -912,6 +910,150 @@ function DPS.RunTest(self, unitwind)
     local config = require("longod.DPSTooltips.config").Default() -- use non-persisitent config for testing
     local dps = require("longod.DPSTooltips.dps").new(config)
     dps:Initialize()
+
+    unitwind:test("GetConditionModifier", function()
+        ---@type tes3weapon
+        local weapon = {
+            hasDurability = false,
+            maxCondition = 100,
+        }
+        ---@type tes3itemData
+        local itemData ={
+            condition = 50,
+        }
+        unitwind:approxExpect(GetConditionModifier(weapon, nil)).toBe(1.0) ---@diagnostic disable-line: param-type-mismatch
+        unitwind:approxExpect(GetConditionModifier(weapon, itemData)).toBe(1.0)
+        weapon.hasDurability = true
+        unitwind:approxExpect(GetConditionModifier(weapon, nil)).toBe(1.0) ---@diagnostic disable-line: param-type-mismatch
+        unitwind:approxExpect(GetConditionModifier(weapon, itemData)).toBe(0.5)
+    end)
+
+    unitwind:test("GetStrengthModifier", function()
+        unitwind:approxExpect(GetStrengthModifier(100, 0.5, 0.01)).toBe(1.5)
+        unitwind:approxExpect(GetStrengthModifier(0, 0.5, 0.01)).toBe(0.5)
+        unitwind:approxExpect(GetStrengthModifier(-100, 0.5, 0.01)).toBe(0.5) -- capped
+    end)
+
+    unitwind:test("GetWeaponBaseDamage", function()
+        ---@type tes3weapon
+        local weapon = {
+            slashMin = 1,
+            slashMax = 2,
+            thrustMin = 3,
+            thrustMax = 4,
+            chopMin = 5,
+            chopMax = 6,
+        }
+        local actual = GetWeaponBaseDamage(weapon, false, false, false)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash].min).toBe(weapon.slashMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash].max).toBe(weapon.slashMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.thrust].min).toBe(weapon.thrustMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.thrust].max).toBe(weapon.thrustMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].min).toBe(weapon.chopMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].max).toBe(weapon.chopMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile]).toBe(nil)
+        actual = GetWeaponBaseDamage(weapon, false, false, true)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash].min).toBe(weapon.slashMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash].max).toBe(weapon.slashMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile]).toBe(nil)
+        actual = GetWeaponBaseDamage(weapon, false, true, false)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.thrust]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].min).toBe(weapon.chopMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].max).toBe(weapon.chopMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile]).toBe(nil)
+        actual = GetWeaponBaseDamage(weapon, false, true, true)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].min).toBe(weapon.chopMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop].max).toBe(weapon.chopMax)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile]).toBe(nil)
+        actual = GetWeaponBaseDamage(weapon, true, false, false)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.thrust]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].min).toBe(weapon.chopMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].max).toBe(weapon.chopMax)
+        actual = GetWeaponBaseDamage(weapon, true, false, true)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.slash]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.thrust]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].min).toBe(weapon.chopMin * 2)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].max).toBe(weapon.chopMax* 2)
+        actual = GetWeaponBaseDamage(weapon, true, true, false)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].min).toBe(weapon.chopMin)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].max).toBe(weapon.chopMax)
+        actual = GetWeaponBaseDamage(weapon, true, true, true)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.chop]).toBe(nil)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].min).toBe(weapon.chopMin * 2)
+        unitwind:approxExpect(actual[tes3.physicalAttackType.projectile].max).toBe(weapon.chopMax* 2)
+    end)
+
+    unitwind:test("CanCastOnStrike", function()
+        ---@type tes3weapon
+        local weapon = {
+            isMelee = true,
+            isProjectile = false,
+        }
+
+        unitwind:mock(tes3, "isModActive", function(filename)
+            if filename == "Cast on Strike Bows.esp" then
+                return true
+            end
+            return false
+        end)
+        dps:Initialize()
+        weapon.isMelee = true
+        weapon.isProjectile = false
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- melee
+        weapon.isMelee = false
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- ranged
+        weapon.isProjectile = true
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- throw
+
+        unitwind:mock(tes3, "isModActive", function(filename)
+            return false
+        end)
+        dps:Initialize()
+        weapon.isMelee = true
+        weapon.isProjectile = false
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- melee
+        weapon.isMelee = false
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(false) -- ranged
+        weapon.isProjectile = true
+        unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- throw
+    end)
+
+    unitwind:test("NeedModifyThrowWeapon", function()
+        ---@type tes3weapon
+        local weapon = {
+            type = tes3.weaponType.arrow,
+        }
+
+        unitwind:mock(tes3, "isLuaModActive", function(filename)
+            if filename == "DQ.ThroProjRev" then
+                return true
+            end
+            return false
+        end)
+        dps:Initialize()
+        weapon.type = tes3.weaponType.arrow
+        unitwind:expect(dps:NeedModifyThrowWeapon(weapon)).toBe(false)
+        weapon.type = tes3.weaponType.marksmanThrown
+        unitwind:expect(dps:NeedModifyThrowWeapon(weapon)).toBe(false)
+
+        unitwind:mock(tes3, "isLuaModActive", function(filename)
+            return false
+        end)
+        dps:Initialize()
+        weapon.type = tes3.weaponType.arrow
+        unitwind:expect(dps:NeedModifyThrowWeapon(weapon)).toBe(false)
+        weapon.type = tes3.weaponType.marksmanThrown
+        unitwind:expect(dps:NeedModifyThrowWeapon(weapon)).toBe(true)
+    end)
+
+    unitwind:test("GetFatigueTerm", function()
+        unitwind:approxExpect(dps:GetFatigueTerm(100, 200)).toBe(combat.CalculateFatigueTerm(100, 200, 1.25, 0.5))
+    end)
 
     unitwind:finish()
 
