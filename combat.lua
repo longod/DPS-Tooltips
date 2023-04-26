@@ -115,6 +115,7 @@ function this.CalculateDifficultyMultiplier(difficulty, fDifficultyMult)
 end
 
 ---@param self CombatFormula
+---@param unitwind MyUnitWind
 function this.RunTest(self, unitwind)
     unitwind:start("DPSTooltips.combat")
 

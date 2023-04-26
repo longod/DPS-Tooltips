@@ -995,7 +995,7 @@ function DPS.RunTest(self, unitwind)
             isMelee = true,
             isProjectile = false,
         }
-
+        unitwind:unmock(tes3, "isModActive")
         unitwind:mock(tes3, "isModActive", function(filename)
             if filename == "Cast on Strike Bows.esp" then
                 return true
@@ -1011,6 +1011,7 @@ function DPS.RunTest(self, unitwind)
         weapon.isProjectile = true
         unitwind:expect(dps:CanCastOnStrike(weapon)).toBe(true) -- throw
 
+        unitwind:unmock(tes3, "isModActive")
         unitwind:mock(tes3, "isModActive", function(filename)
             return false
         end)
@@ -1030,6 +1031,7 @@ function DPS.RunTest(self, unitwind)
             type = tes3.weaponType.arrow,
         }
 
+        unitwind:unmock(tes3, "isLuaModActive")
         unitwind:mock(tes3, "isLuaModActive", function(filename)
             if filename == "DQ.ThroProjRev" then
                 return true
@@ -1042,6 +1044,7 @@ function DPS.RunTest(self, unitwind)
         weapon.type = tes3.weaponType.marksmanThrown
         unitwind:expect(dps:NeedModifyThrowWeapon(weapon)).toBe(false)
 
+        unitwind:unmock(tes3, "isLuaModActive")
         unitwind:mock(tes3, "isLuaModActive", function(filename)
             return false
         end)
