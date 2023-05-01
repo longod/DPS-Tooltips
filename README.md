@@ -1,8 +1,8 @@
 # DPS Tooltips
 
-This mod analytically calculates weapon DPS and displays it in weapon tooltips.
+This mod analytically calculates weapon DPS including enchantment effects and displays it in weapon tooltips.
 
-I wonder if a dagger with lots of enchantments is better for this player character or another two-handed sword with lots of enchantments. Now we can know which weapons are actually stronger for your player character.
+I wonder if a fast dagger with lots of enchantments is better for this player character or another slow two-handed sword with lots of enchantments. Now we can know which weapons are actually stronger for your player character.
 
 DPS seems impossible to perfectly match the actual damage. Because of that will be different depending on attributes and skills of target. Therefore it is just a guide.
 
