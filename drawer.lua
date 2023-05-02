@@ -216,9 +216,9 @@ end
 ---@param data DPSData
 function Drawer.DisplayWeaponDPS(self, element, data)
     local weaponOrder = {
+        tes3.physicalAttackType.chop,
         tes3.physicalAttackType.slash,
         tes3.physicalAttackType.thrust,
-        tes3.physicalAttackType.chop,
         tes3.physicalAttackType.projectile,
     }
 

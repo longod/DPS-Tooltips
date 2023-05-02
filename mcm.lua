@@ -12,7 +12,7 @@ function this.OnModConfigReady()
     local page = template:createSideBarPage {
         label = "Settings",
         description = (
-            "This mod analytically calculates weapon DPS including enchantment effects and displays it in weapon tooltips.\n" ..
+            "This mod analytically calculates weapon DPS (damage per second) including enchantment effects and displays it in weapon tooltips.\n" ..
             "You can know which weapons are actually stronger for your player character."
             )
     }
